@@ -11,22 +11,29 @@ cargadas por foto (carpeta `sistema-control-produccion/`, sistema con Gemini + n
 | `index.html` | Login (Supabase Auth) |
 | `dashboard.html` | Panel: pestaña **Máquinas y eventos** (bitácora de roturas/repuestos/insumos) + pestaña **Producción** (gráficos de kilos, bien/mal, defectos, scrap) |
 | `app.js` | Cliente Supabase, auth, CRUD |
-| `sistema-control-produccion/1-supabase-schema.sql` | Esquema completo de producción (empresas/plantas/máquinas/operarios/bobinas), ya armado para Dottiplast pero genérico multi-empresa |
-| `sistema-control-produccion/2-extension-eventos-y-auth.sql` | Extensión para esta app: tabla `usuarios` (login), tabla `eventos_maquina` (bitácora), permisos, y siembra de la empresa "Coop El Circulo" / planta "Rolleras" |
-| `sistema-control-produccion/2-flujo-ingesta-y-consultas.json` | Workflow n8n: foto de la hoja de control → Gemini → Supabase (hay que apuntarlo a este proyecto nuevo, ver abajo) |
+| `sistema-control-produccion/SUPABASE-COMPLETO.sql` | **El único SQL que hay que correr.** Producción (empresas/plantas/máquinas/operarios/bobinas + vistas + RPC para n8n) y app de planta (`usuarios`, `eventos_maquina`, permisos), ya adaptado a Coop El Círculo / planta Rolleras |
+| `sistema-control-produccion/1-supabase-schema.sql` y `bloque-*.sql` | Versión original del esquema (Dottiplast). Quedan de referencia — **no correrlos**, los reemplaza `SUPABASE-COMPLETO.sql` |
+| `sistema-control-produccion/2-flujo-ingesta-y-consultas.json` | Workflow n8n: foto de la hoja de control → Gemini → Supabase (hay que apuntarlo a este proyecto, ver abajo) |
 
 ## Puesta en marcha
 
 ### 1. Supabase
-1. Creá un proyecto nuevo en supabase.com (aparte del de tu negocio personal).
-2. SQL Editor → correr **primero** `sistema-control-produccion/1-supabase-schema.sql` completo, y **después** `sistema-control-produccion/2-extension-eventos-y-auth.sql`.
-3. **Authentication → Users → Add user**: creá tu primer usuario (email tipo `tunombre@coopelcirculo.com`, o el que prefieras, con contraseña). Copiá su UUID.
-4. SQL Editor: `insert into usuarios (nombre, user_id) values ('Tu Nombre', 'EL-UUID-QUE-COPIASTE');`
-5. Repetí 3-4 por cada persona que vaya a usar la app.
+Proyecto: `yequwsdaqbihkmjtyuvm` (org `coopelcirculo-hue's`, plan free).
+
+1. SQL Editor → pegar y ejecutar **`sistema-control-produccion/SUPABASE-COMPLETO.sql`** entero, una sola vez.
+2. **Authentication → Users → Add user**: creá tu primer usuario (email tipo `tunombre@coopelcirculo.com`, con contraseña). Copiá su UUID.
+3. SQL Editor: `insert into usuarios (nombre, user_id) values ('Tu Nombre', 'EL-UUID-QUE-COPIASTE');`
+4. Repetí 2-3 por cada persona que vaya a usar la app.
+
+> El usuario se crea con un email cualquiera (puede ser ficticio, tipo `@coopelcirculo.com`);
+> en la pantalla de login se escribe solo la parte de antes del `@`.
 
 ### 2. Esta app (index.html / dashboard.html / app.js)
-1. En `app.js`, reemplazá `https://TU-PROYECTO.supabase.co` y `TU-ANON-KEY` por los datos de tu proyecto (**Project Settings → API**, la clave **anon/public**, nunca la service_role).
-2. Deploy como estático en Easypanel con el `Dockerfile` incluido (igual que tus otras apps).
+`app.js` ya está apuntado a ese proyecto (URL + anon key). El anon key es público
+por diseño: la seguridad la dan las políticas RLS, no el secreto de la clave.
+
+Deploy gratis con GitHub Pages (repo público) o Cloudflare Pages, o en Easypanel
+con el `Dockerfile` incluido.
 
 ### 3. Flujo de ingesta (n8n) — para que la pestaña "Producción" tenga datos
 El workflow que fotografía la hoja de control y la guarda en Supabase (carpeta
