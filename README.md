@@ -38,17 +38,30 @@ Deploy gratis con GitHub Pages (repo público) o Cloudflare Pages, o en Easypane
 con el `Dockerfile` incluido.
 
 ### 3. Flujo de ingesta (n8n) — para que la pestaña "Producción" tenga datos
-El workflow que fotografía la hoja de control y la guarda en Supabase (carpeta
-`sistema-control-produccion/`) hay que armarlo/apuntarlo a **este** proyecto nuevo:
-1. Importá `2-flujo-ingesta-y-consultas.json` en tu n8n (uno nuevo, o un workflow
-   aparte en el mismo n8n — no lo mezcles con el de Dottiplast).
-2. Credenciales: Telegram (bot propio de coop el circulo), Google Gemini, y
-   **Supabase de este proyecto nuevo** (service_role key).
-3. En el nodo `ValidarDatos`, el campo `empresa` tiene que quedar en
-   `"Coop El Circulo"` (así lo separa del resto). El campo `planta` en `"Rolleras"`
-   o dejalo vacío (cae en "Planta principal" por defecto — está bien si tenés una sola).
-4. Activá el workflow. Las máquinas se crean solas la primera vez que aparecen
-   en una foto — no hace falta cargarlas a mano.
+
+Importá **`sistema-control-produccion/1-flujo-ingesta-COOP-EL-CIRCULO.json`**
+(⋯ → *Import from File*). Ya viene con la URL de este Supabase, `empresa: "Coop El Circulo"`
+y `planta: "Rolleras"` — no hay que tocar código.
+
+Falta completar 4 cosas, todas dentro de n8n:
+
+| Qué | Dónde se saca | Nodos que la usan |
+|---|---|---|
+| **Credencial Telegram** | Bot nuevo con [@BotFather](https://t.me/BotFather) (`/newbot`) | Activador de Telegram, ObtenerImagen, EnviarConfirmacion, AvisarErrores, RespuestaTexto |
+| **Credencial Google Gemini** | API key en [aistudio.google.com](https://aistudio.google.com/apikey) | LeerParte, Modelo de chat de Gemini |
+| **Credencial Supabase** | Project Settings → API → **service_role** key (no la anon) | GuardarParte, consultar_base |
+| **Chat ID de avisos** | Reemplazar `PEGAR_CHAT_ID_AVISOS` (2 lugares) por el chat/grupo destino | EnviarConfirmacion, AvisarErrores |
+
+> Para sacar el chat ID: mandale un mensaje al bot desde el grupo y abrí
+> `https://api.telegram.org/bot<TU_TOKEN>/getUpdates` — el número está en `chat.id`.
+
+Después activá el workflow. Sacan una foto de la hoja de control por Telegram y
+Gemini la lee, valida y guarda. Las máquinas que aparezcan en las fotos se crean
+solas (si ya las cargaste a mano con el mismo número, se reutilizan).
+
+> ⚠️ Si tenés otro bot de Telegram corriendo en el mismo n8n (el de Dottiplast),
+> usá un bot **distinto** para este: Telegram permite un solo webhook activo por
+> bot, y si no uno le roba el webhook al otro.
 
 ### 4. Uso diario
 - **Monitoreo**: el tablero de qué está haciendo cada máquina *ahora*. Con

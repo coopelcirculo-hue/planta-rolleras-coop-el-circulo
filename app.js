@@ -183,6 +183,15 @@ const desdeHace = iso => {
   return "hace "+d+" día"+(d!==1?"s":"")+(h%24?" "+(h%24)+" h":"");
 };
 
+// El código suele ser solo el número ("5" → "Rollera 5"), pero si ya viene con
+// texto ("rollera 5", "R5") se respeta tal cual y se muestra capitalizado.
+const tituloMaquina = codigo => {
+  const c = String(codigo||"").trim();
+  if(!c) return "Máquina";
+  if(/^\d+$/.test(c)) return "Rollera "+c;
+  return c.charAt(0).toUpperCase()+c.slice(1);
+};
+
 // "lun 4/8 06:30"
 const fhora = iso => {
   if(!iso) return "";

@@ -140,7 +140,7 @@ function MaquinasGrid({maquinas,eventos,onEditar,onNuevoEvento}){
 function EventosFeed({eventos,maquinas,onResolver,onEliminar}){
   const [filtroEstado,setFiltroEstado]=useState("pendientes");
   const [filtroTipo,setFiltroTipo]=useState("todos");
-  const nombreMaquina = id => { const m=maquinas.find(x=>x.id===id); return m ? "Máquina "+m.codigo+(m.nombre?" — "+m.nombre:"") : "—"; };
+  const nombreMaquina = id => { const m=maquinas.find(x=>x.id===id); return m ? tituloMaquina(m.codigo)+(m.nombre?" — "+m.nombre:"") : "—"; };
 
   const fil = eventos.filter(e=>{
     if(filtroEstado==="pendientes"&&e.resuelto) return false;
@@ -241,7 +241,7 @@ function TarjetaMaquina({fila,onCambiar,onHistorial,onBorrar}){
   return(<div style={{background:CA,border:"1px solid "+(sinRegistro?BR:color+"66"),borderRadius:14,padding:16,display:"flex",flexDirection:"column",gap:10}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
       <div>
-        <div style={{color:W,fontWeight:700,fontSize:15}}>Rollera {fila.maquina}</div>
+        <div style={{color:W,fontWeight:700,fontSize:15}}>{tituloMaquina(fila.maquina)}</div>
         {fila.maquina_nombre&&<div style={{color:GR,fontSize:10,marginTop:2}}>{fila.maquina_nombre}</div>}
       </div>
       <span style={{background:(sinRegistro?GR:color)+"22",color:sinRegistro?GR:color,fontSize:10,fontWeight:700,padding:"4px 10px",borderRadius:20,whiteSpace:"nowrap"}}>
@@ -279,7 +279,7 @@ function NuevaMaquinaForm({onSave,onClose}){
   const guardar=async()=>{ setGuardando(true); await onSave(codigo.trim(),nombre.trim()); setGuardando(false); };
   return(<>
     <Field label="Número / código">
-      <input style={inp} value={codigo} onChange={e=>setCodigo(e.target.value)} placeholder="Ej: 5  (queda como Rollera 5)" autoFocus onKeyDown={e=>e.key==="Enter"&&codigo.trim()&&guardar()}/>
+      <input style={inp} value={codigo} onChange={e=>setCodigo(e.target.value)} placeholder="Ej: 5   →  queda como Rollera 5" autoFocus onKeyDown={e=>e.key==="Enter"&&codigo.trim()&&guardar()}/>
     </Field>
     <Field label="Nombre / detalle (opcional)">
       <input style={inp} value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: rollera chica"/>
@@ -331,7 +331,7 @@ function Monitoreo({perfil}){
   };
 
   const borrarMaquina = async f => {
-    if(!confirm("¿Eliminar la Rollera "+f.maquina+"? Se borran también sus estados y eventos."))return;
+    if(!confirm("¿Eliminar "+tituloMaquina(f.maquina)+"? Se borran también sus estados y eventos."))return;
     const r = await db.delMaquina(f.maquina_id);
     if(!r.ok){ setError(r.detalle); return; }
     setError(""); await cargar();
@@ -372,11 +372,11 @@ function Monitoreo({perfil}){
       <NuevaMaquinaForm onSave={crearMaquina} onClose={()=>{setNuevaMaq(false);setError("");}}/>
     </Modal>}
 
-    {modal&&<Modal title={"Rollera "+modal.maquina} onClose={()=>{setModal(null);setError("");}}>
+    {modal&&<Modal title={tituloMaquina(modal.maquina)} onClose={()=>{setModal(null);setError("");}}>
       <CambiarEstadoForm init={modal} onSave={guardar} onClose={()=>{setModal(null);setError("");}}/>
     </Modal>}
 
-    {historial&&<Modal title={"Historial — Rollera "+historial.maquina} onClose={()=>setHistorial(null)}>
+    {historial&&<Modal title={"Historial — "+tituloMaquina(historial.maquina)} onClose={()=>setHistorial(null)}>
       {historial.filas===null?<p style={{color:GR,fontSize:12}}>Cargando...</p>:
        historial.filas.length===0?<p style={{color:GR,fontSize:12}}>Sin registros todavía.</p>:
        <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
