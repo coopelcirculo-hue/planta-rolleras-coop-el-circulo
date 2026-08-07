@@ -37,11 +37,26 @@ const initAuth = async () => {
   return _perfil;
 };
 
+// Devuelve {ok:true} o {ok:false, detalle:"..."} para poder mostrar el motivo real
+// del fallo (no siempre es la contraseña: puede faltar la fila en `usuarios`).
 const doLogin = async (usuario,password) => {
   const email = emailFromUsuario(usuario);
   const {error} = await SB.auth.signInWithPassword({email,password});
-  if(error) return null;
-  return await initAuth();
+  if(error) return {ok:false, detalle:"Auth: "+error.message+" (email probado: "+email+")"};
+
+  const {data:{session}} = await SB.auth.getSession();
+  const {data,error:errPerfil} = await SB.from("usuarios").select("*").eq("user_id",session.user.id).maybeSingle();
+  if(errPerfil) return {ok:false, detalle:"Leyendo usuarios: "+errPerfil.message};
+  if(!data){
+    await SB.auth.signOut();
+    return {ok:false, detalle:"La contraseña es correcta, pero este usuario no está en la tabla `usuarios`. Falta correr el insert con user_id = "+session.user.id};
+  }
+  if(data.activo===false){
+    await SB.auth.signOut();
+    return {ok:false, detalle:"El usuario está marcado como inactivo en la tabla `usuarios`."};
+  }
+  _perfil = {nombre:data.nombre, usuarioId:data.id};
+  return {ok:true, perfil:_perfil};
 };
 
 const getSess   = () => _perfil;

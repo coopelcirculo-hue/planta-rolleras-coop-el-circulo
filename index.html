@@ -52,9 +52,9 @@ function Login(){
   const submit=async()=>{
     if(!u.trim()||!p){return;}
     setErr("");setLoading(true);
-    const sess=await doLogin(u.trim(),p);
-    if(sess){window.location.href="dashboard.html";}
-    else{setErr("Usuario o contraseña incorrectos.");setP("");setLoading(false);}
+    const res=await doLogin(u.trim(),p);
+    if(res.ok){window.location.href="dashboard.html";}
+    else{setErr(res.detalle);setP("");setLoading(false);}
   };
 
   if(!SUPABASE_CONFIGURADO) return <FaltaConfig/>;
@@ -78,7 +78,7 @@ function Login(){
             <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:GR,cursor:"pointer",fontSize:18,lineHeight:1}}>{show?"🙈":"👁"}</button>
           </div>
         </div>
-        {err&&<div style={{color:RE,fontSize:12,marginBottom:14,textAlign:"center",padding:"8px",background:RE+"15",borderRadius:8}}>{err}</div>}
+        {err&&<div style={{color:RE,fontSize:11,marginBottom:14,textAlign:"left",padding:"10px",background:RE+"15",borderRadius:8,lineHeight:1.5,wordBreak:"break-word"}}>{err}</div>}
         <button onClick={submit} disabled={loading} style={{...Btn(O,D),width:"100%",fontFamily:"Orbitron,sans-serif",letterSpacing:1,opacity:loading?0.7:1}}>{loading?"INGRESANDO...":"INGRESAR"}</button>
       </div>
     </div>
