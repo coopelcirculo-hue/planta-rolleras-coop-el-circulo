@@ -68,6 +68,7 @@ const changeMyPassword = async newPass => {
 
 // ── Mappers snake_case ↔ camelCase ────────────────────────────────────────────
 const fromEvento = e => ({...e,maquinaId:e.maquina_id,resueltoFecha:e.resuelto_fecha,creadoPor:e.creado_por});
+const fromEstado = e => ({...e,maquinaId:e.maquina_id,creadoPor:e.creado_por});
 const toEvento   = e => ({maquina_id:e.maquinaId,tipo:e.tipo,descripcion:e.descripcion,fecha:e.fecha,resuelto:e.resuelto||false,resuelto_fecha:e.resueltoFecha||null,creado_por:e.creadoPor||""});
 
 // ── CRUD Supabase ─────────────────────────────────────────────────────────────
@@ -90,6 +91,19 @@ const db = {
     setMaqs(prev=>prev.map(m=>m.id===d.id?{...m,...row}:m));
   },
 
+  // Alta manual (la RPC resuelve empresa/planta sola)
+  async crearMaquina(codigo, nombre) {
+    const {error} = await SB.rpc("crear_maquina",{_codigo:codigo,_nombre:nombre||""});
+    return !error ? {ok:true} : {ok:false, detalle:error.message};
+  },
+
+  async delMaquina(id, setMaqs) {
+    const {error} = await SB.from("maquinas").delete().eq("id",id);
+    if(error) return {ok:false, detalle:error.message};
+    if(setMaqs) setMaqs(prev=>prev.filter(m=>m.id!==id));
+    return {ok:true};
+  },
+
   async saveEvento(d, setEventos) {
     const {data} = await SB.from("eventos_maquina").insert(toEvento(d)).select().single();
     if(data) setEventos(prev=>[fromEvento(data),...prev]);
@@ -104,6 +118,29 @@ const db = {
   async delEvento(id, setEventos) {
     await SB.from("eventos_maquina").delete().eq("id",id);
     setEventos(prev=>prev.filter(e=>e.id!==id));
+  },
+
+  // Monitoreo en vivo: qué está haciendo cada máquina ahora
+  async loadEstadoActual() {
+    const {data} = await SB.from("v_estado_actual").select("*").order("maquina");
+    return (data||[]).map(fromEstado);
+  },
+
+  // Cierra el tramo anterior y abre uno nuevo (RPC, en una sola operación)
+  async cambiarEstado({maquinaId,estado,medida,presentacion,motivo,creadoPor}) {
+    const {error} = await SB.rpc("cambiar_estado_maquina",{
+      _maquina_id:maquinaId, _estado:estado,
+      _medida:medida||"", _presentacion:presentacion||"",
+      _motivo:motivo||"", _creado_por:creadoPor||""
+    });
+    return !error ? {ok:true} : {ok:false, detalle:error.message};
+  },
+
+  // Historial de tramos de una máquina (lo último primero)
+  async historialEstados(maquinaId) {
+    const {data} = await SB.from("estados_maquina").select("*")
+      .eq("maquina_id",maquinaId).order("inicio",{ascending:false}).limit(100);
+    return (data||[]).map(fromEstado);
   },
 
   // Estadísticas de producción (hojas de control ya cargadas por foto → Gemini)
@@ -123,3 +160,33 @@ const TIPOS_EVENTO = [
   {id:"insumo",label:"Falta insumo",icon:"🧴",color:BL},
 ];
 const tipoInfo = id => TIPOS_EVENTO.find(t=>t.id===id) || TIPOS_EVENTO[0];
+
+// Estados de monitoreo en vivo
+const ESTADOS = [
+  {id:"produciendo",label:"Produciendo",icon:"🟢",color:GN},
+  {id:"parada",label:"Parada",icon:"🟡",color:O},
+  {id:"apagada",label:"Apagada",icon:"⚫",color:GR},
+];
+const estadoInfo = id => ESTADOS.find(e=>e.id===id) || null;
+
+// Motivos típicos de parada (se puede escribir cualquier otro)
+const MOTIVOS_PARADA = ["Cambio de cinta","Cambio de medida","Repuesto","Mantenimiento","Sin material","Fin de turno"];
+
+// "hace 3 h 20 min" a partir de un timestamp
+const desdeHace = iso => {
+  if(!iso) return "";
+  const min = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime())/60000));
+  if(min < 60) return "hace "+min+" min";
+  const h = Math.floor(min/60), m = min%60;
+  if(h < 24) return "hace "+h+" h"+(m?" "+m+" min":"");
+  const d = Math.floor(h/24);
+  return "hace "+d+" día"+(d!==1?"s":"")+(h%24?" "+(h%24)+" h":"");
+};
+
+// "lun 4/8 06:30"
+const fhora = iso => {
+  if(!iso) return "";
+  const d = new Date(iso);
+  const dia = ["dom","lun","mar","mié","jue","vie","sáb"][d.getDay()];
+  return dia+" "+d.getDate()+"/"+(d.getMonth()+1)+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
+};

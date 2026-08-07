@@ -9,7 +9,7 @@ cargadas por foto (carpeta `sistema-control-produccion/`, sistema con Gemini + n
 | Archivo | Qué es |
 |---|---|
 | `index.html` | Login (Supabase Auth) |
-| `dashboard.html` | Panel: pestaña **Máquinas y eventos** (bitácora de roturas/repuestos/insumos) + pestaña **Producción** (gráficos de kilos, bien/mal, defectos, scrap) |
+| `dashboard.html` | Panel: pestaña **Monitoreo** (qué está haciendo cada máquina ahora) + **Máquinas y eventos** (bitácora de roturas/repuestos/insumos) + **Producción** (gráficos de kilos, bien/mal, defectos, scrap) |
 | `app.js` | Cliente Supabase, auth, CRUD |
 | `sistema-control-produccion/SUPABASE-COMPLETO.sql` | **El único SQL que hay que correr.** Producción (empresas/plantas/máquinas/operarios/bobinas + vistas + RPC para n8n) y app de planta (`usuarios`, `eventos_maquina`, permisos), ya adaptado a Coop El Círculo / planta Rolleras |
 | `sistema-control-produccion/1-supabase-schema.sql` y `bloque-*.sql` | Versión original del esquema (Dottiplast). Quedan de referencia — **no correrlos**, los reemplaza `SUPABASE-COMPLETO.sql` |
@@ -21,6 +21,8 @@ cargadas por foto (carpeta `sistema-control-produccion/`, sistema con Gemini + n
 Proyecto: `yequwsdaqbihkmjtyuvm` (org `coopelcirculo-hue's`, plan free).
 
 1. SQL Editor → pegar y ejecutar **`sistema-control-produccion/SUPABASE-COMPLETO.sql`** entero, una sola vez.
+   *(Si ya lo corriste antes de que existiera el monitoreo, corré además
+   `sistema-control-produccion/3-monitoreo-maquinas.sql`.)*
 2. **Authentication → Users → Add user**: creá tu primer usuario (email tipo `tunombre@coopelcirculo.com`, con contraseña). Copiá su UUID.
 3. SQL Editor: `insert into usuarios (nombre, user_id) values ('Tu Nombre', 'EL-UUID-QUE-COPIASTE');`
 4. Repetí 2-3 por cada persona que vaya a usar la app.
@@ -49,8 +51,18 @@ El workflow que fotografía la hoja de control y la guarda en Supabase (carpeta
    en una foto — no hace falta cargarlas a mano.
 
 ### 4. Uso diario
+- **Monitoreo**: el tablero de qué está haciendo cada máquina *ahora*. Con
+  "Cambiar estado" registrás si está **produciendo** (medida + presentación, ej.
+  `45x60x20` / `x24 Dottiplast`), **parada** (con motivo: cambio de cinta,
+  repuesto, sin material...) o **apagada**. Cada cambio cierra el tramo anterior,
+  así queda el historial completo con duraciones (botón 🕘). Se refresca solo
+  cada minuto.
 - **Máquinas y eventos**: cuando algo se rompe o falta un repuesto/insumo, tocás
   "+ Evento" en la máquina correspondiente, elegís el tipo y describís. Se marca
   "Resuelto" cuando se soluciona.
 - **Producción**: gráficos de kilos, errores y defectos de las hojas de control
   cargadas por foto, con filtro de fechas.
+
+> **Las máquinas** se pueden cargar a mano desde Monitoreo → "+ Agregar máquina"
+> (poné el mismo número que figura en la hoja de control), y además se crean solas
+> la primera vez que n8n procesa una foto con esa máquina.
