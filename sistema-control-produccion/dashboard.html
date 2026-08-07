@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de Producción — Dashboard</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root { --bg:#0f1420; --card:#1a2130; --borde:#2a3347; --texto:#e8ecf4; --sub:#93a0b8; --acento:#38bdf8; --ok:#34d399; --malo:#f87171; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--texto); font-family:system-ui,Segoe UI,Roboto,sans-serif; }
+  header { padding:18px 24px; border-bottom:1px solid var(--borde); display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:18px; }
+  header .punto { width:8px; height:8px; border-radius:50%; background:var(--ok); animation:latido 2s infinite; }
+  @keyframes latido { 50% { opacity:.3 } }
+  .contenido { padding:20px 24px; max-width:1300px; margin:0 auto; }
+  .filtros { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:18px; }
+  .filtros label { font-size:11px; color:var(--sub); display:block; margin-bottom:3px; }
+  .filtros select, .filtros input { background:var(--card); border:1px solid var(--borde); color:var(--texto); border-radius:8px; padding:7px 10px; font-size:13px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-bottom:18px; }
+  .tile { background:var(--card); border:1px solid var(--borde); border-radius:12px; padding:14px; }
+  .tile .v { font-size:22px; font-weight:700; margin-top:4px; }
+  .tile .t { font-size:11px; color:var(--sub); text-transform:uppercase; letter-spacing:.5px; }
+  .graficos { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--borde); border-radius:12px; padding:14px; }
+  .card h3 { font-size:13px; color:var(--sub); margin-bottom:10px; }
+  .card canvas { max-height:260px; }
+  .vacio { text-align:center; color:var(--sub); padding:60px 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+// ================== CONFIGURACION ==================
+const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
+const SUPABASE_ANON_KEY = 'PEGAR_ANON_KEY';
+// ===================================================
+
+const cliente = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const { useState, useEffect, useRef } = React;
+const fmt = n => (Number(n) || 0).toLocaleString('es-AR');
+const hoyISO = () => new Date().toISOString().slice(0, 10);
+const haceDias = d => new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+
+function Grafico({ titulo, tipo, datos, opciones }) {
+  const ref = useRef(null);
+  const chartRef = useRef(null);
+  useEffect(() => {
+    if (chartRef.current) chartRef.current.destroy();
+    chartRef.current = new Chart(ref.current, {
+      type: tipo,
+      data: datos,
+      options: Object.assign({
+        responsive: true,
+        plugins: { legend: { labels: { color: '#93a0b8' } } },
+        scales: tipo === 'doughnut' ? {} : {
+          x: { ticks: { color: '#93a0b8' }, grid: { color: '#2a3347' } },
+          y: { ticks: { color: '#93a0b8' }, grid: { color: '#2a3347' } }
+        }
+      }, opciones || {})
+    });
+    return () => chartRef.current && chartRef.current.destroy();
+  }, [JSON.stringify(datos)]);
+  return (
+    <div className="card">
+      <h3>{titulo}</h3>
+      <canvas ref={ref}></canvas>
+    </div>
+  );
+}
+
+function App() {
+  const [bobinas, setBobinas] = useState([]);
+  const [producciones, setProducciones] = useState([]);
+  const [actualizado, setActualizado] = useState(null);
+  const [f, setF] = useState({ desde: haceDias(30), hasta: hoyISO(), operario: '', maquina: '', turno: '', medida: '' });
+
+  async function cargar() {
+    const [b, p] = await Promise.all([
+      cliente.from('v_bobinas').select('*').order('fecha', { ascending: false }).limit(20000),
+      cliente.from('v_producciones').select('*').order('fecha', { ascending: false }).limit(5000)
+    ]);
+    if (!b.error) setBobinas(b.data || []);
+    if (!p.error) setProducciones(p.data || []);
+    setActualizado(new Date());
+  }
+
+  useEffect(() => {
+    cargar();
+    // Tiempo real: cualquier carga nueva refresca el dashboard sola
+    const canal = cliente.channel('cambios')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bobinas' }, cargar)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scrap' }, cargar)
+      .subscribe();
+    const intervalo = setInterval(cargar, 120000);
+    return () => { cliente.removeChannel(canal); clearInterval(intervalo); };
+  }, []);
+
+  // ----- filtros -----
+  const pasa = x =>
+    (!f.desde || x.fecha >= f.desde) && (!f.hasta || x.fecha <= f.hasta) &&
+    (!f.maquina || x.maquina === f.maquina) && (!f.turno || x.turno === f.turno) &&
+    (!f.medida || x.medida === f.medida);
+  const bs = bobinas.filter(x => pasa(x) && (!f.operario || x.operario_bobina === f.operario));
+  const ps = producciones.filter(pasa);
+
+  const unicos = k => [...new Set(bobinas.map(x => x[k]).filter(Boolean))].sort();
+  const operarios = unicos('operario_bobina'), maquinas = unicos('maquina'), medidas = unicos('medida');
+
+  // ----- estadisticas -----
+  const kilos = bs.reduce((a, b) => a + (+b.peso || 0), 0);
+  const bien = bs.filter(b => b.estado === 'BIEN').length;
+  const mal = bs.filter(b => b.estado === 'MAL').length;
+  const se = ps.reduce((a, x) => a + (+x.scrap_empalme || 0), 0);
+  const sr = ps.reduce((a, x) => a + (+x.scrap_rollo || 0), 0);
+  const bultos = ps.reduce((a, x) => a + (+x.bultos || 0), 0);
+  const scrapPct = kilos ? (100 * (se + sr) / kilos).toFixed(2) + '%' : '—';
+
+  const agrupar = (arr, clave, valor) => {
+    const o = {};
+    for (const x of arr) { const k = x[clave] || 'S/D'; o[k] = (o[k] || 0) + valor(x); }
+    return o;
+  };
+  const ordenado = o => Object.keys(o).sort();
+
+  const porDia = agrupar(bs, 'fecha', b => +b.peso || 0);
+  const dias = ordenado(porDia);
+  const opBien = agrupar(bs.filter(b => b.estado === 'BIEN'), 'operario_bobina', () => 1);
+  const opMal = agrupar(bs.filter(b => b.estado === 'MAL'), 'operario_bobina', () => 1);
+  const ops = [...new Set([...Object.keys(opBien), ...Object.keys(opMal)])].sort();
+  const scrapDiaE = agrupar(ps, 'fecha', x => +x.scrap_empalme || 0);
+  const scrapDiaR = agrupar(ps, 'fecha', x => +x.scrap_rollo || 0);
+  const diasScrap = ordenado(agrupar(ps, 'fecha', () => 0));
+  const porMaquina = agrupar(bs, 'maquina', b => +b.peso || 0);
+  const defectosCnt = {};
+  for (const b of bs) {
+    if (!b.defectos) continue;
+    for (const d of String(b.defectos).split(',').map(s => s.trim().toLowerCase()).filter(Boolean)) {
+      defectosCnt[d] = (defectosCnt[d] || 0) + 1;
+    }
+  }
+  const defs = Object.entries(defectosCnt).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const cortarFecha = s => s.slice(5).split('-').reverse().join('/');
+
+  const sel = (etiqueta, clave, opciones) => (
+    <div>
+      <label>{etiqueta}</label>
+      <select value={f[clave]} onChange={e => setF({ ...f, [clave]: e.target.value })}>
+        <option value="">Todos</option>
+        {opciones.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+
+  return (
+    <div>
+      <header>
+        <div className="punto"></div>
+        <h1>Control de Producción</h1>
+        <span style={{ fontSize: 12, color: 'var(--sub)' }}>
+          {actualizado ? 'Actualizado ' + actualizado.toLocaleTimeString('es-AR') : 'Cargando…'}
+        </span>
+      </header>
+      <div className="contenido">
+        <div className="filtros">
+          <div><label>Desde</label><input type="date" value={f.desde} onChange={e => setF({ ...f, desde: e.target.value })} /></div>
+          <div><label>Hasta</label><input type="date" value={f.hasta} onChange={e => setF({ ...f, hasta: e.target.value })} /></div>
+          {sel('Operario', 'operario', operarios)}
+          {sel('Máquina', 'maquina', maquinas)}
+          {sel('Turno', 'turno', ['dia', 'noche'])}
+          {sel('Medida', 'medida', medidas)}
+        </div>
+
+        <div className="tiles">
+          <div className="tile"><div className="t">Kilos</div><div className="v">{fmt(kilos)}</div></div>
+          <div className="tile"><div className="t">Bobinas</div><div className="v">{fmt(bs.length)}</div></div>
+          <div className="tile"><div className="t">Peso promedio</div><div className="v">{bs.length ? fmt(Math.round(kilos / bs.length)) : '—'}</div></div>
+          <div className="tile"><div className="t">Bien / Mal</div><div className="v"><span style={{ color: 'var(--ok)' }}>{bien}</span> / <span style={{ color: 'var(--malo)' }}>{mal}</span></div></div>
+          <div className="tile"><div className="t">Bultos (pallets)</div><div className="v">{fmt(bultos)}</div></div>
+          <div className="tile"><div className="t">Scrap</div><div className="v">{fmt(se + sr)}</div></div>
+          <div className="tile"><div className="t">Scrap %</div><div className="v">{scrapPct}</div></div>
+        </div>
+
+        {bs.length === 0 && ps.length === 0 ? (
+          <div className="vacio">No hay datos para los filtros seleccionados</div>
+        ) : (
+          <div className="graficos">
+            <Grafico titulo="Kilos por día" tipo="bar" datos={{
+              labels: dias.map(cortarFecha),
+              datasets: [{ label: 'Kilos', data: dias.map(d => porDia[d]), backgroundColor: '#38bdf8' }]
+            }} opciones={{ plugins: { legend: { display: false } } }} />
+            <Grafico titulo="BIEN / MAL por operario" tipo="bar" datos={{
+              labels: ops,
+              datasets: [
+                { label: 'BIEN', data: ops.map(o => opBien[o] || 0), backgroundColor: '#34d399' },
+                { label: 'MAL', data: ops.map(o => opMal[o] || 0), backgroundColor: '#f87171' }
+              ]
+            }} opciones={{ scales: { x: { stacked: true, ticks: { color: '#93a0b8' }, grid: { color: '#2a3347' } }, y: { stacked: true, ticks: { color: '#93a0b8' }, grid: { color: '#2a3347' } } } }} />
+            <Grafico titulo="Scrap por día (kg)" tipo="bar" datos={{
+              labels: diasScrap.map(cortarFecha),
+              datasets: [
+                { label: 'Empalme', data: diasScrap.map(d => scrapDiaE[d] || 0), backgroundColor: '#38bdf8' },
+                { label: 'Rollo', data: diasScrap.map(d => scrapDiaR[d] || 0), backgroundColor: '#fbbf24' }
+              ]
+            }} />
+            <Grafico titulo="Kilos por máquina" tipo="bar" datos={{
+              labels: Object.keys(porMaquina).sort(),
+              datasets: [{ label: 'Kilos', data: Object.keys(porMaquina).sort().map(m => porMaquina[m]), backgroundColor: '#a78bfa' }]
+            }} opciones={{ plugins: { legend: { display: false } } }} />
+            {defs.length > 0 &&
+              <Grafico titulo="Defectos más frecuentes" tipo="doughnut" datos={{
+                labels: defs.map(d => d[0]),
+                datasets: [{ data: defs.map(d => d[1]), backgroundColor: ['#f87171', '#fbbf24', '#38bdf8', '#a78bfa', '#34d399', '#fb923c', '#f472b6', '#94a3b8'] }]
+              }} />}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

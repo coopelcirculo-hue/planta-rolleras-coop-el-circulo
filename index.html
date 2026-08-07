@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="theme-color" content="#111827"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+  <link rel="manifest" href="manifest.json"/>
+  <link rel="apple-touch-icon" href="icon-192.png"/>
+  <title>Coop El Círculo | Planta</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>body{overflow:auto;display:flex;align-items:center;justify-content:center;min-height:100vh;}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+function FaltaConfig(){
+  return(<div style={{width:340,maxWidth:"90vw",fontFamily:"Montserrat,sans-serif",textAlign:"center",color:W}}>
+    <div style={{fontSize:40,marginBottom:14}}>⚙️</div>
+    <h2 style={{fontFamily:"Orbitron,sans-serif",fontSize:15,marginBottom:10}}>Falta configurar Supabase</h2>
+    <p style={{color:GR,fontSize:12,lineHeight:1.6}}>
+      1. Creá un proyecto en supabase.com<br/>
+      2. Corré <code>supabase.sql</code> en su SQL Editor<br/>
+      3. Pegá la URL y el anon key al inicio de <code>app.js</code><br/>
+      4. Creá tu usuario en Supabase Auth y agregalo a la tabla <code>usuarios</code>
+    </p>
+  </div>);
+}
+
+function Login(){
+  const [u,setU]=useState(""); const [p,setP]=useState(""); const [show,setShow]=useState(false);
+  const [err,setErr]=useState(""); const [loading,setLoading]=useState(false);
+  const [checking,setChecking]=useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      const perfil=await initAuth();
+      if(perfil) window.location.href="dashboard.html";
+      else setChecking(false);
+    })();
+  },[]);
+
+  const submit=async()=>{
+    if(!u.trim()||!p){return;}
+    setErr("");setLoading(true);
+    const sess=await doLogin(u.trim(),p);
+    if(sess){window.location.href="dashboard.html";}
+    else{setErr("Usuario o contraseña incorrectos.");setP("");setLoading(false);}
+  };
+
+  if(!SUPABASE_CONFIGURADO) return <FaltaConfig/>;
+  if(checking) return null;
+  return(
+    <div style={{width:340,maxWidth:"90vw",fontFamily:"Montserrat,sans-serif"}}>
+      <div style={{textAlign:"center",marginBottom:36}}>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontSize:24,color:O,letterSpacing:2,marginBottom:8}}>🏭</div>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontSize:16,color:W,letterSpacing:2,marginBottom:6}}>COOP EL CÍRCULO</div>
+        <div style={{fontSize:10,color:GR,letterSpacing:3}}>PLANTA ROLLERAS</div>
+      </div>
+      <div style={{background:CB,border:"1px solid "+BR,borderRadius:16,padding:28}}>
+        <div style={{marginBottom:16}}>
+          <label style={{display:"block",color:GR,fontSize:11,marginBottom:6,letterSpacing:1}}>USUARIO</label>
+          <input style={inp} value={u} onChange={e=>setU(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} autoComplete="username"/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label style={{display:"block",color:GR,fontSize:11,marginBottom:6,letterSpacing:1}}>CONTRASEÑA</label>
+          <div style={{position:"relative"}}>
+            <input style={{...inp,paddingRight:44}} type={show?"text":"password"} value={p} onChange={e=>setP(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} autoComplete="current-password"/>
+            <button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",color:GR,cursor:"pointer",fontSize:18,lineHeight:1}}>{show?"🙈":"👁"}</button>
+          </div>
+        </div>
+        {err&&<div style={{color:RE,fontSize:12,marginBottom:14,textAlign:"center",padding:"8px",background:RE+"15",borderRadius:8}}>{err}</div>}
+        <button onClick={submit} disabled={loading} style={{...Btn(O,D),width:"100%",fontFamily:"Orbitron,sans-serif",letterSpacing:1,opacity:loading?0.7:1}}>{loading?"INGRESANDO...":"INGRESAR"}</button>
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Login/>);
+  </script>
+</body>
+</html>

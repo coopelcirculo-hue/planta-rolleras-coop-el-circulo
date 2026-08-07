@@ -1,0 +1,242 @@
+{
+  "name": "3 - Reportes automaticos (PDF + Excel)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "n1000000-0000-4000-8000-000000000001",
+      "name": "Todos los dias 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1060, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "v_bobinas",
+        "returnAll": true
+      },
+      "id": "n1000000-0000-4000-8000-000000000002",
+      "name": "ObtenerBobinas",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [-840, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "v_producciones",
+        "returnAll": true
+      },
+      "id": "n1000000-0000-4000-8000-000000000003",
+      "name": "ObtenerProducciones",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [-620, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decide que reportes tocan hoy (diario siempre; semanal los lunes; mensual el dia 1)\n// y arma un HTML por cada uno, listo para convertir a PDF.\nconst bob = $('ObtenerBobinas').all().map(i => i.json);\nconst prods = $input.all().map(i => i.json);\n\nconst hoy = new Date(); hoy.setHours(0, 0, 0, 0);\nconst ayer = new Date(hoy.getTime() - 86400000);\nconst iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');\n\nconst periodos = [{ nombre: 'diario', desde: iso(ayer), hasta: iso(ayer), titulo: 'Reporte diario ' + iso(ayer) }];\nif (hoy.getDay() === 1) {\n  const d1 = new Date(hoy.getTime() - 7 * 86400000);\n  periodos.push({ nombre: 'semanal', desde: iso(d1), hasta: iso(ayer), titulo: 'Reporte semanal ' + iso(d1) + ' al ' + iso(ayer) });\n}\nif (hoy.getDate() === 1) {\n  const m = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);\n  periodos.push({ nombre: 'mensual', desde: iso(m), hasta: iso(ayer), titulo: 'Reporte mensual ' + iso(m).slice(0, 7) });\n}\n\nconst out = [];\nfor (const p of periodos) {\n  const bs = bob.filter(b => b.fecha >= p.desde && b.fecha <= p.hasta);\n  const ps = prods.filter(x => x.fecha >= p.desde && x.fecha <= p.hasta);\n  if (bs.length === 0 && ps.length === 0) continue;\n\n  const kilos = bs.reduce((a, b) => a + (Number(b.peso) || 0), 0);\n  const bien = bs.filter(b => b.estado === 'BIEN').length;\n  const mal = bs.filter(b => b.estado === 'MAL').length;\n  const se = ps.reduce((a, x) => a + (Number(x.scrap_empalme) || 0), 0);\n  const sr = ps.reduce((a, x) => a + (Number(x.scrap_rollo) || 0), 0);\n  const bultos = ps.reduce((a, x) => a + (Number(x.bultos) || 0), 0);\n  const fmt = n => (Number(n) || 0).toLocaleString('es-AR');\n  const pct = n => kilos ? (100 * n / kilos).toFixed(2) + '%' : '-';\n\n  const agr = (arr, k, f) => {\n    const o = {};\n    for (const x of arr) { const key = x[k] || 'S/D'; o[key] = (o[key] || 0) + f(x); }\n    return Object.entries(o).sort((a, b) => b[1] - a[1]);\n  };\n  const kilosMaq = agr(bs, 'maquina', b => Number(b.peso) || 0);\n  const kilosOp = agr(bs, 'operario_bobina', b => Number(b.peso) || 0);\n\n  const fila = (a, v) => '<tr><td>' + a + '</td><td style=\"text-align:right\">' + v + '</td></tr>';\n  const tabla = (titulo, filas) => '<table><tr><th colspan=\"2\">' + titulo + '</th></tr>' + filas + '</table>';\n\n  const html = '<!doctype html><html><head><meta charset=\"utf-8\"><style>' +\n    'body{font-family:Arial,sans-serif;margin:36px;color:#222}h1{font-size:20px;border-bottom:2px solid #333;padding-bottom:8px}' +\n    'table{border-collapse:collapse;width:100%;margin:14px 0}td,th{border:1px solid #999;padding:6px 10px;font-size:12px}' +\n    'th{background:#efefef;text-align:left}' +\n    '</style></head><body>' +\n    '<h1>' + p.titulo + '</h1>' +\n    tabla('Resumen',\n      fila('Kilos producidos', fmt(kilos)) +\n      fila('Bobinas', bs.length) +\n      fila('Peso promedio', bs.length ? fmt(Math.round(kilos / bs.length)) : '-') +\n      fila('BIEN / MAL', bien + ' / ' + mal) +\n      fila('Bultos (pallets)', fmt(bultos)) +\n      fila('Scrap empalme', fmt(se) + ' (' + pct(se) + ')') +\n      fila('Scrap rollo', fmt(sr) + ' (' + pct(sr) + ')') +\n      fila('Scrap total', fmt(se + sr) + ' (' + pct(se + sr) + ')')) +\n    tabla('Kilos por maquina', kilosMaq.map(([k, v]) => fila('Maq. ' + k, fmt(v))).join('')) +\n    tabla('Kilos por operario', kilosOp.map(([k, v]) => fila(k, fmt(v))).join('')) +\n    '<p style=\"font-size:10px;color:#888\">Generado automaticamente el ' + iso(hoy) + '</p>' +\n    '</body></html>';\n\n  out.push({\n    json: { periodo: p.nombre, titulo: p.titulo },\n    binary: { archivo: await this.helpers.prepareBinaryData(Buffer.from(html, 'utf8'), 'index.html', 'text/html') }\n  });\n}\n\nreturn out;"
+      },
+      "id": "n1000000-0000-4000-8000-000000000004",
+      "name": "ArmarReportes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://TU-GOTENBERG:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "archivo"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "id": "n1000000-0000-4000-8000-000000000005",
+      "name": "ConvertirPDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-180, 180]
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "PEGAR_CHAT_ID_REPORTES",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "fileName": "={{ 'reporte-' + $('ArmarReportes').item.json.periodo + '.pdf' }}"
+        }
+      },
+      "id": "n1000000-0000-4000-8000-000000000006",
+      "name": "EnviarPDF",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [40, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Detalle de bobinas de ayer para exportar a Excel (una fila por bobina)\nconst bob = $('ObtenerBobinas').all().map(i => i.json);\nconst hoy = new Date(); hoy.setHours(0, 0, 0, 0);\nconst a = new Date(hoy.getTime() - 86400000);\nconst ayer = a.getFullYear() + '-' + String(a.getMonth() + 1).padStart(2, '0') + '-' + String(a.getDate()).padStart(2, '0');\nconst filas = bob.filter(b => b.fecha === ayer);\nif (filas.length === 0) return [];\nreturn filas.map(b => ({\n  json: {\n    fecha: b.fecha,\n    turno: b.turno,\n    maquina: b.maquina,\n    operario: b.operario_bobina || b.operario_turno || '',\n    n_bobina: b.n_bobina,\n    peso: b.peso,\n    estado: b.estado,\n    defectos: b.defectos || '',\n    medida: b.medida || ''\n  }\n}));"
+      },
+      "id": "n1000000-0000-4000-8000-000000000007",
+      "name": "FilasExcel",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-400, 440]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "fileName": "bobinas-del-dia.xlsx"
+        }
+      },
+      "id": "n1000000-0000-4000-8000-000000000008",
+      "name": "ConvertirExcel",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [-180, 440]
+    },
+    {
+      "parameters": {
+        "operation": "sendDocument",
+        "chatId": "PEGAR_CHAT_ID_REPORTES",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {
+          "fileName": "bobinas-del-dia.xlsx"
+        }
+      },
+      "id": "n1000000-0000-4000-8000-000000000009",
+      "name": "EnviarExcel",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [40, 440]
+    },
+    {
+      "parameters": {
+        "content": "## Reportes automaticos\nCada dia a las 07:00: PDF del dia anterior + Excel con el detalle de bobinas.\nLos lunes se agrega el PDF semanal y el dia 1 de cada mes el PDF mensual.\n\nEl PDF se genera con Gotenberg (contenedor gratuito en Easypanel). Cambiar TU-GOTENBERG por la URL interna del servicio.",
+        "height": 560,
+        "width": 1360,
+        "color": 4
+      },
+      "id": "n1000000-0000-4000-8000-000000000010",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1140, 60]
+    }
+  ],
+  "connections": {
+    "Todos los dias 07:00": {
+      "main": [
+        [
+          {
+            "node": "ObtenerBobinas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ObtenerBobinas": {
+      "main": [
+        [
+          {
+            "node": "ObtenerProducciones",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ObtenerProducciones": {
+      "main": [
+        [
+          {
+            "node": "ArmarReportes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "FilasExcel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ArmarReportes": {
+      "main": [
+        [
+          {
+            "node": "ConvertirPDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ConvertirPDF": {
+      "main": [
+        [
+          {
+            "node": "EnviarPDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FilasExcel": {
+      "main": [
+        [
+          {
+            "node": "ConvertirExcel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ConvertirExcel": {
+      "main": [
+        [
+          {
+            "node": "EnviarExcel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}

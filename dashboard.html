@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="theme-color" content="#111827"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black"/>
+  <link rel="manifest" href="manifest.json"/>
+  <title>Planta — Coop El Círculo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div id="splash"><div id="splash-logo">🏭 PLANTA</div><div id="splash-sub">COOP EL CÍRCULO</div><div id="splash-dot"></div></div>
+  <div id="root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+const {useState,useEffect,useRef}=React;
+
+function useMobile(){ const [m,setM]=useState(window.innerWidth<768); useEffect(()=>{const h=()=>setM(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);return m; }
+
+function Field({label,children}){return(<div style={{marginBottom:14}}><label style={{display:"block",color:GR,fontSize:11,marginBottom:5,letterSpacing:1}}>{label.toUpperCase()}</label>{children}</div>);}
+function Modal({title,children,onClose}){return(<div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:16}}><div style={{background:CB,border:"1px solid "+BR,borderRadius:16,padding:28,width:440,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><h3 style={{color:W,fontFamily:"Orbitron,sans-serif",fontSize:15,margin:0}}>{title}</h3><button onClick={onClose} style={{background:"transparent",border:"none",color:GR,cursor:"pointer",fontSize:20}}>✕</button></div>{children}</div></div>);}
+
+// ── Header ───────────────────────────────────────────────────────────────────
+function Header({nombre,tab,setTab}){
+  const logout=async()=>{await clearSess();window.location.href="index.html";};
+  return(<div style={{background:"#0c1420",borderBottom:"1px solid "+BR,flexShrink:0}}>
+    <div style={{padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+      <div>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontSize:13,color:O,letterSpacing:1}}>🏭 PLANTA ROLLERAS</div>
+        <div style={{fontSize:10,color:GR,marginTop:2}}>Coop El Círculo{nombre?" · "+nombre:""}</div>
+      </div>
+      <button onClick={logout} style={{...Btn("transparent",RE,{padding:"7px 14px",fontSize:12})}}>🚪 Salir</button>
+    </div>
+    <div style={{display:"flex",gap:4,padding:"0 16px"}}>
+      {[["maquinas","🔧 Máquinas y eventos"],["produccion","📊 Producción"]].map(([id,lbl])=>(
+        <button key={id} onClick={()=>setTab(id)} style={{padding:"9px 14px",border:"none",borderBottom:"2px solid "+(tab===id?O:"transparent"),background:"transparent",color:tab===id?O:GR,cursor:"pointer",fontSize:12,fontWeight:tab===id?700:400,fontFamily:"Montserrat,sans-serif"}}>{lbl}</button>
+      ))}
+    </div>
+  </div>);
+}
+
+// ── Formularios ──────────────────────────────────────────────────────────────
+function MaquinaForm({init,onSave,onClose}){
+  const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  return(<>
+    <Field label="Código (fijo, viene de la hoja de control)"><input style={{...inp,opacity:0.6}} value={f.codigo} disabled/></Field>
+    <Field label="Nombre / apodo (opcional)"><input style={inp} value={f.nombre||""} onChange={e=>s("nombre",e.target.value)} placeholder="Ej: Rolladora chica"/></Field>
+    <Field label="Notas (opcional)"><textarea style={{...inp,minHeight:70,resize:"vertical"}} value={f.notas||""} onChange={e=>s("notas",e.target.value)}/></Field>
+    <Field label="Estado">
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>s("activa",true)} style={{...Btn(f.activa!==false?GN:"transparent",f.activa!==false?D:GR,{flex:1}) }}>✓ Activa</button>
+        <button onClick={()=>s("activa",false)} style={{...Btn(f.activa===false?RE:"transparent",f.activa===false?W:GR,{flex:1}) }}>⏸ Fuera de servicio</button>
+      </div>
+    </Field>
+    <div style={{display:"flex",gap:10,marginTop:8}}>
+      <button onClick={onClose} style={{...Btn("transparent",GR),flex:1}}>Cancelar</button>
+      <button onClick={()=>onSave(f)} style={{...Btn(O,D),flex:1}}>Guardar</button>
+    </div>
+  </>);
+}
+
+function EventoForm({init,maquinas,onSave,onClose}){
+  const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  const valido = f.maquinaId && f.descripcion.trim();
+  return(<>
+    <Field label="Máquina">
+      <select style={inp} value={f.maquinaId||""} onChange={e=>s("maquinaId",e.target.value)}>
+        <option value="">Seleccionar...</option>
+        {maquinas.map(m=><option key={m.id} value={m.id}>{m.codigo}{m.nombre?" — "+m.nombre:""}</option>)}
+      </select>
+    </Field>
+    <Field label="Tipo">
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        {TIPOS_EVENTO.map(t=>(<button key={t.id} onClick={()=>s("tipo",t.id)} style={{...Btn(f.tipo===t.id?t.color:"transparent",f.tipo===t.id?D:GR,{flex:1,minWidth:100,fontSize:12,borderColor:t.color}) }}>{t.icon} {t.label}</button>))}
+      </div>
+    </Field>
+    <Field label="Descripción">
+      <textarea style={{...inp,minHeight:80,resize:"vertical"}} value={f.descripcion} onChange={e=>s("descripcion",e.target.value)} placeholder="Qué pasó / qué falta..."/>
+    </Field>
+    <Field label="Fecha"><input type="date" style={inp} value={f.fecha} onChange={e=>s("fecha",e.target.value)}/></Field>
+    <div style={{display:"flex",gap:10,marginTop:8}}>
+      <button onClick={onClose} style={{...Btn("transparent",GR),flex:1}}>Cancelar</button>
+      <button onClick={()=>valido&&onSave(f)} disabled={!valido} style={{...Btn(O,D,{opacity:valido?1:0.5}),flex:1}}>Guardar</button>
+    </div>
+  </>);
+}
+
+// ── Stat card ────────────────────────────────────────────────────────────────
+function StatCard({v,l,s,c}){
+  return(<div style={{background:CA,border:"1px solid "+BR,borderRadius:12,padding:16}}>
+    <div style={{color:GR,fontSize:10,marginBottom:6,letterSpacing:1}}>{l.toUpperCase()}</div>
+    <div style={{fontFamily:"Orbitron,sans-serif",fontSize:20,color:c,fontWeight:700}}>{v}</div>
+    <div style={{color:GR,fontSize:10,marginTop:3}}>{s}</div>
+  </div>);
+}
+
+// ── Máquinas (grid) ──────────────────────────────────────────────────────────
+function MaquinasGrid({maquinas,eventos,onEditar,onNuevoEvento}){
+  const pendPorMaquina = id => eventos.filter(e=>e.maquinaId===id&&!e.resuelto).length;
+  return(<div>
+    <h3 style={{color:W,fontSize:13,marginBottom:12,fontWeight:700}}>🏭 Máquinas</h3>
+    {maquinas.length===0?(
+      <div style={{textAlign:"center",padding:40,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12}}>
+        <div style={{fontSize:36,marginBottom:10}}>🏭</div>
+        <p>Todavía no hay máquinas cargadas. Aparecen solas la primera vez que se sube una hoja de control con esa máquina.</p>
+      </div>
+    ):(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
+        {maquinas.map(m=>{
+          const pend=pendPorMaquina(m.id);
+          return(<div key={m.id} style={{background:CA,border:"1px solid "+(m.activa===false?RE+"44":(pend>0?O+"44":BR)),borderRadius:12,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+              <div>
+                <div style={{color:W,fontWeight:700,fontSize:13}}>Máquina {m.codigo}</div>
+                {m.nombre&&<div style={{color:GR,fontSize:10,marginTop:2}}>{m.nombre}</div>}
+              </div>
+              <button onClick={()=>onEditar(m)} style={{...Btn("transparent",GR,{padding:"3px 7px",fontSize:11})}}>✏️</button>
+            </div>
+            {m.activa===false&&<span style={{background:RE+"22",color:RE,fontSize:9,fontWeight:700,padding:"2px 8px",borderRadius:20}}>FUERA DE SERVICIO</span>}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
+              <span style={{fontSize:11,color:pend>0?O:GN,fontWeight:700}}>{pend>0?pend+" pendiente"+(pend!==1?"s":""):"✓ sin pendientes"}</span>
+              <button onClick={()=>onNuevoEvento(m)} style={{...Btn("transparent",O,{padding:"5px 10px",fontSize:11,borderColor:O})}}>+ Evento</button>
+            </div>
+          </div>);
+        })}
+      </div>
+    )}
+  </div>);
+}
+
+// ── Eventos (feed) ───────────────────────────────────────────────────────────
+function EventosFeed({eventos,maquinas,onResolver,onEliminar}){
+  const [filtroEstado,setFiltroEstado]=useState("pendientes");
+  const [filtroTipo,setFiltroTipo]=useState("todos");
+  const nombreMaquina = id => { const m=maquinas.find(x=>x.id===id); return m ? "Máquina "+m.codigo+(m.nombre?" — "+m.nombre:"") : "—"; };
+
+  const fil = eventos.filter(e=>{
+    if(filtroEstado==="pendientes"&&e.resuelto) return false;
+    if(filtroEstado==="resueltos"&&!e.resuelto) return false;
+    if(filtroTipo!=="todos"&&e.tipo!==filtroTipo) return false;
+    return true;
+  });
+
+  return(<div style={{marginTop:24}}>
+    <h3 style={{color:W,fontSize:13,marginBottom:12,fontWeight:700}}>📋 Historial de eventos</h3>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {[["pendientes","Pendientes"],["resueltos","Resueltos"],["todos","Todos"]].map(([id,lbl])=>(
+        <button key={id} onClick={()=>setFiltroEstado(id)} style={{...Btn(filtroEstado===id?O:"transparent",filtroEstado===id?D:GR,{padding:"5px 12px",fontSize:11})}}>{lbl}</button>
+      ))}
+      <span style={{width:1,background:BR,margin:"0 4px"}}/>
+      <button onClick={()=>setFiltroTipo("todos")} style={{...Btn(filtroTipo==="todos"?W:"transparent",filtroTipo==="todos"?D:GR,{padding:"5px 12px",fontSize:11})}}>Todos los tipos</button>
+      {TIPOS_EVENTO.map(t=>(
+        <button key={t.id} onClick={()=>setFiltroTipo(t.id)} style={{...Btn(filtroTipo===t.id?t.color:"transparent",filtroTipo===t.id?D:GR,{padding:"5px 12px",fontSize:11})}}>{t.icon} {t.label}</button>
+      ))}
+    </div>
+    {fil.length===0?(
+      <p style={{color:GR,fontSize:12,textAlign:"center",padding:20}}>No hay eventos en este filtro.</p>
+    ):(
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {fil.map(e=>{
+          const t=tipoInfo(e.tipo);
+          return(<div key={e.id} style={{background:CA,border:"1px solid "+BR,borderRadius:10,padding:"12px 14px",display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                <span style={{background:t.color+"22",color:t.color,fontSize:10,fontWeight:700,padding:"2px 9px",borderRadius:20}}>{t.icon} {t.label}</span>
+                <span style={{color:W,fontWeight:700,fontSize:12}}>{nombreMaquina(e.maquinaId)}</span>
+                <span style={{color:GR,fontSize:11}}>{fdate(e.fecha)}</span>
+              </div>
+              <div style={{color:GR,fontSize:12}}>{e.descripcion}</div>
+              {e.resuelto&&<div style={{color:GN,fontSize:10,marginTop:4}}>✓ Resuelto {e.resueltoFecha?"el "+fdate(e.resueltoFecha):""}</div>}
+              {e.creadoPor&&<div style={{color:GR,fontSize:10,marginTop:4}}>Cargado por {e.creadoPor}</div>}
+            </div>
+            <div style={{display:"flex",gap:6,flexShrink:0}}>
+              <button onClick={()=>onResolver(e)} style={{...Btn(e.resuelto?"transparent":GN,e.resuelto?GR:D,{padding:"6px 10px",fontSize:11})}}>{e.resuelto?"↺ Reabrir":"✓ Resolver"}</button>
+              <button onClick={()=>onEliminar(e)} style={{...Btn("transparent",RE,{padding:"6px 10px",fontSize:11,borderColor:RE+"55"})}}>✕</button>
+            </div>
+          </div>);
+        })}
+      </div>
+    )}
+  </div>);
+}
+
+// ── Producción (gráficos) ────────────────────────────────────────────────────
+function Grafico({titulo,tipo,datos,opciones}){
+  const ref=useRef(null);const chartRef=useRef(null);
+  useEffect(()=>{
+    if(chartRef.current) chartRef.current.destroy();
+    chartRef.current=new Chart(ref.current,{type:tipo,data:datos,options:Object.assign({
+      responsive:true,
+      plugins:{legend:{labels:{color:GR}}},
+      scales: tipo==="doughnut"?{}:{ x:{ticks:{color:GR},grid:{color:BR}}, y:{ticks:{color:GR},grid:{color:BR}} }
+    },opciones||{})});
+    return ()=>chartRef.current&&chartRef.current.destroy();
+  },[JSON.stringify(datos)]);
+  return(<div style={{background:CA,border:"1px solid "+BR,borderRadius:12,padding:16}}>
+    <h3 style={{color:GR,fontSize:12,marginBottom:10,fontWeight:700}}>{titulo}</h3>
+    <div style={{maxHeight:260}}><canvas ref={ref}/></div>
+  </div>);
+}
+
+function Produccion(){
+  const [bobinas,setBobinas]=useState([]);const [producciones,setProducciones]=useState([]);
+  const [desde,setDesde]=useState(haceDiasIso(30));const [hasta,setHasta]=useState(hoyIso());
+  const [cargando,setCargando]=useState(true);
+
+  const cargar=async()=>{
+    setCargando(true);
+    const {bobinas,producciones}=await db.loadProduccion(desde,hasta);
+    setBobinas(bobinas);setProducciones(producciones);setCargando(false);
+  };
+  useEffect(()=>{cargar();},[desde,hasta]);
+
+  const kilos=bobinas.reduce((a,b)=>a+(+b.peso||0),0);
+  const bien=bobinas.filter(b=>b.estado==="BIEN").length;
+  const mal=bobinas.filter(b=>b.estado==="MAL").length;
+  const se=producciones.reduce((a,x)=>a+(+x.scrap_empalme||0),0);
+  const sr=producciones.reduce((a,x)=>a+(+x.scrap_rollo||0),0);
+  const scrapPct=kilos?(100*(se+sr)/kilos).toFixed(2)+"%":"—";
+
+  const agrupar=(arr,clave,valor)=>{const o={};for(const x of arr){const k=x[clave]||"S/D";o[k]=(o[k]||0)+valor(x);}return o;};
+  const cortarFecha=s=>s.slice(5).split("-").reverse().join("/");
+
+  const porDia=agrupar(bobinas,"fecha",b=>+b.peso||0);const dias=Object.keys(porDia).sort();
+  const opBien=agrupar(bobinas.filter(b=>b.estado==="BIEN"),"operario_bobina",()=>1);
+  const opMal=agrupar(bobinas.filter(b=>b.estado==="MAL"),"operario_bobina",()=>1);
+  const ops=[...new Set([...Object.keys(opBien),...Object.keys(opMal)])].sort();
+  const porMaquina=agrupar(bobinas,"maquina",b=>+b.peso||0);
+  const defectosCnt={};
+  for(const b of bobinas){ if(!b.defectos) continue; for(const d of String(b.defectos).split(",").map(s=>s.trim().toLowerCase()).filter(Boolean)) defectosCnt[d]=(defectosCnt[d]||0)+1; }
+  const defs=Object.entries(defectosCnt).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  return(<div>
+    <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
+      <div><div style={{color:GR,fontSize:10,marginBottom:4}}>DESDE</div><input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>
+      <div><div style={{color:GR,fontSize:10,marginBottom:4}}>HASTA</div><input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>
+    </div>
+    {cargando?<p style={{color:GR,fontSize:12}}>Cargando...</p>:(
+    bobinas.length===0?(
+      <div style={{textAlign:"center",padding:40,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12}}>
+        <p>No hay datos de producción en este rango. Se cargan solos cuando se sube una foto de la hoja de control.</p>
+      </div>
+    ):(<>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
+        <StatCard v={fnum(kilos)} l="Kilos" s="del período" c={O}/>
+        <StatCard v={bobinas.length} l="Bobinas" s="del período" c={W}/>
+        <StatCard v={<span><span style={{color:GN}}>{bien}</span> / <span style={{color:RE}}>{mal}</span></span>} l="Bien / Mal" s="bobinas" c={W}/>
+        <StatCard v={fnum(se+sr)} l="Scrap (kg)" s={scrapPct} c={BL}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:14}}>
+        <Grafico titulo="Kilos por día" tipo="bar" datos={{labels:dias.map(cortarFecha),datasets:[{label:"Kilos",data:dias.map(d=>porDia[d]),backgroundColor:O}]}} opciones={{plugins:{legend:{display:false}}}}/>
+        <Grafico titulo="Kilos por máquina" tipo="bar" datos={{labels:Object.keys(porMaquina).sort(),datasets:[{label:"Kilos",data:Object.keys(porMaquina).sort().map(m=>porMaquina[m]),backgroundColor:PU}]}} opciones={{plugins:{legend:{display:false}}}}/>
+        <Grafico titulo="BIEN / MAL por operario" tipo="bar" datos={{labels:ops,datasets:[{label:"BIEN",data:ops.map(o=>opBien[o]||0),backgroundColor:GN},{label:"MAL",data:ops.map(o=>opMal[o]||0),backgroundColor:RE}]}} opciones={{scales:{x:{stacked:true,ticks:{color:GR},grid:{color:BR}},y:{stacked:true,ticks:{color:GR},grid:{color:BR}}}}}/>
+        {defs.length>0&&<Grafico titulo="Defectos más frecuentes" tipo="doughnut" datos={{labels:defs.map(d=>d[0]),datasets:[{data:defs.map(d=>d[1]),backgroundColor:[RE,O,BL,PU,GN,"#fb923c","#f472b6","#94a3b8"]}]}}/>}
+      </div>
+    </>)
+    )}
+  </div>);
+}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+function App(){
+  const [tab,setTab]=useState("maquinas");
+  const [maquinas,setMaquinas]=useState([]);
+  const [eventos,setEventos]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [perfil,setPerfil]=useState(null);
+  const [modalMaquina,setModalMaquina]=useState(null);
+  const [modalEvento,setModalEvento]=useState(null);
+  const isMobile=useMobile();
+
+  useEffect(()=>{
+    (async()=>{
+      const p=await initAuth();
+      if(!p){window.location.href="index.html";return;}
+      setPerfil(p);
+      try{
+        const data=await db.loadAll();
+        setMaquinas(data.maquinas);
+        setEventos(data.eventos);
+      }catch(e){console.error("Error cargando datos:",e);}
+      setLoading(false);
+      const s=document.getElementById("splash");
+      if(s){s.style.opacity="0";setTimeout(()=>s.remove(),400);}
+    })();
+  },[]);
+
+  if(loading) return null;
+
+  const activas = maquinas.filter(m=>m.activa!==false);
+  const pendientes = eventos.filter(e=>!e.resuelto);
+  const porTipo = t => pendientes.filter(e=>e.tipo===t).length;
+
+  const guardarMaquina = async d => { await db.saveMaquina(d,setMaquinas); setModalMaquina(null); };
+  const guardarEvento = async d => { await db.saveEvento({...d,creadoPor:perfil?.nombre||""},setEventos); setModalEvento(null); };
+  const resolver = async e => await db.marcarResuelto(e.id,!e.resuelto,setEventos);
+  const eliminarEvento = async e => { if(confirm("¿Eliminar este evento?"))await db.delEvento(e.id,setEventos); };
+
+  return(
+    <div style={{minHeight:"100vh",fontFamily:"Montserrat,sans-serif",background:D,color:W}}>
+      <Header nombre={perfil?.nombre} tab={tab} setTab={setTab}/>
+      <div style={{padding:isMobile?14:24,maxWidth:1100,margin:"0 auto"}}>
+        {tab==="maquinas"&&(<>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:24}}>
+            <StatCard v={activas.length} l="Máquinas activas" s={maquinas.length-activas.length>0?(maquinas.length-activas.length)+" fuera de servicio":"todas operativas"} c={W}/>
+            <StatCard v={pendientes.length} l="Eventos pendientes" s="sin resolver" c={pendientes.length>0?O:GN}/>
+            <StatCard v={porTipo("rotura")} l="Roturas" s="pendientes" c={RE}/>
+            <StatCard v={porTipo("repuesto")+porTipo("insumo")} l="Repuestos/insumos" s="por comprar" c={BL}/>
+          </div>
+          <MaquinasGrid
+            maquinas={maquinas} eventos={eventos}
+            onEditar={m=>setModalMaquina({...m})}
+            onNuevoEvento={m=>setModalEvento({maquinaId:m.id,tipo:"rotura",descripcion:"",fecha:hoyIso()})}
+          />
+          <EventosFeed eventos={eventos} maquinas={maquinas} onResolver={resolver} onEliminar={eliminarEvento}/>
+        </>)}
+        {tab==="produccion"&&<Produccion/>}
+      </div>
+
+      {modalMaquina&&<Modal title="Editar máquina" onClose={()=>setModalMaquina(null)}>
+        <MaquinaForm init={modalMaquina} onSave={guardarMaquina} onClose={()=>setModalMaquina(null)}/>
+      </Modal>}
+      {modalEvento&&<Modal title="Nuevo evento" onClose={()=>setModalEvento(null)}>
+        <EventoForm init={modalEvento} maquinas={maquinas} onSave={guardarEvento} onClose={()=>setModalEvento(null)}/>
+      </Modal>}
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+  </script>
+  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});</script>
+</body>
+</html>
