@@ -1,12 +1,9 @@
 // ── Supabase ──────────────────────────────────────────────────────────────────
-// Reemplazar por la URL y anon key de TU proyecto de Supabase (creá uno nuevo en supabase.com,
-// corré sistema-control-produccion/1-supabase-schema.sql y luego 2-extension-eventos-y-auth.sql
-// en su SQL Editor, y pegá acá los datos de Project Settings → API).
 const SB = window.supabase.createClient(
-  "https://TU-PROYECTO.supabase.co",
-  "TU-ANON-KEY"
+  "https://yequwsdaqbihkmjtyuvm.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllcXV3c2RhcWJpaGttanR5dXZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Nzk1MTcsImV4cCI6MjEwMTQ1NTUxN30.6M_UMFBvd3thFlDEwiZZwjXkAAGxXnE-IUFYsS1Xcj0"
 );
-const SUPABASE_CONFIGURADO = !("https://TU-PROYECTO.supabase.co"==="https://TU-PROYECTO.supabase.co" && "TU-ANON-KEY"==="TU-ANON-KEY");
+const SUPABASE_CONFIGURADO = true;
 
 // Nombre de empresa usado en el esquema multi-empresa (debe coincidir con lo que
 // manda el flujo de ingesta de n8n en el campo "empresa" de cada hoja de control).
