@@ -29,19 +29,28 @@ function Field({label,children}){return(<div style={{marginBottom:14}}><label st
 function Modal({title,children,onClose}){return(<div style={{position:"fixed",inset:0,background:"#000c",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:16}}><div style={{background:CB,border:"1px solid "+BR,borderRadius:16,padding:28,width:440,maxWidth:"95vw",maxHeight:"90vh",overflowY:"auto"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}><h3 style={{color:W,fontFamily:"Orbitron,sans-serif",fontSize:15,margin:0}}>{title}</h3><button onClick={onClose} style={{background:"transparent",border:"none",color:GR,cursor:"pointer",fontSize:20}}>✕</button></div>{children}</div></div>);}
 
 // ── Header ───────────────────────────────────────────────────────────────────
-function Header({nombre,tab,setTab}){
+// En el celular las etiquetas se acortan y la barra scrollea en horizontal,
+// así ninguna pestaña queda cortada.
+const TABS=[["monitoreo","🟢","Monitoreo","Monitoreo"],
+            ["maquinas","🔧","Máquinas y eventos","Máquinas"],
+            ["cargar","📝","Cargar hoja","Cargar"],
+            ["produccion","📊","Producción","Datos"]];
+
+function Header({nombre,tab,setTab,isMobile}){
   const logout=async()=>{await clearSess();window.location.href="index.html";};
   return(<div style={{background:"#0c1420",borderBottom:"1px solid "+BR,flexShrink:0}}>
-    <div style={{padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-      <div>
-        <div style={{fontFamily:"Orbitron,sans-serif",fontSize:13,color:O,letterSpacing:1}}>🏭 PLANTA ROLLERAS</div>
-        <div style={{fontSize:10,color:GR,marginTop:2}}>Coop El Círculo{nombre?" · "+nombre:""}</div>
+    <div style={{padding:isMobile?"12px 14px":"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+      <div style={{minWidth:0}}>
+        <div style={{fontFamily:"Orbitron,sans-serif",fontSize:isMobile?11:13,color:O,letterSpacing:1,whiteSpace:"nowrap"}}>🏭 PLANTA ROLLERAS</div>
+        <div style={{fontSize:10,color:GR,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Coop El Círculo{nombre?" · "+nombre:""}</div>
       </div>
-      <button onClick={logout} style={{...Btn("transparent",RE,{padding:"7px 14px",fontSize:12})}}>🚪 Salir</button>
+      <button onClick={logout} style={{...Btn("transparent",RE,{padding:"7px 12px",fontSize:12,flexShrink:0})}}>🚪{isMobile?"":" Salir"}</button>
     </div>
-    <div style={{display:"flex",gap:4,padding:"0 16px"}}>
-      {[["monitoreo","🟢 Monitoreo"],["maquinas","🔧 Máquinas y eventos"],["cargar","📝 Cargar hoja"],["produccion","📊 Producción"]].map(([id,lbl])=>(
-        <button key={id} onClick={()=>setTab(id)} style={{padding:"9px 14px",border:"none",borderBottom:"2px solid "+(tab===id?O:"transparent"),background:"transparent",color:tab===id?O:GR,cursor:"pointer",fontSize:12,fontWeight:tab===id?700:400,fontFamily:"Montserrat,sans-serif"}}>{lbl}</button>
+    <div className="barra-tabs" style={{display:"flex",gap:2,padding:"0 10px",overflowX:"auto"}}>
+      {TABS.map(([id,ic,largo,corto])=>(
+        <button key={id} onClick={()=>setTab(id)} style={{padding:isMobile?"10px 11px":"9px 14px",border:"none",borderBottom:"2px solid "+(tab===id?O:"transparent"),background:"transparent",color:tab===id?O:GR,cursor:"pointer",fontSize:12,fontWeight:tab===id?700:400,fontFamily:"Montserrat,sans-serif",whiteSpace:"nowrap",flexShrink:0}}>
+          {ic} {isMobile?corto:largo}
+        </button>
       ))}
     </div>
   </div>);
@@ -399,6 +408,7 @@ function Monitoreo({perfil}){
 
 // ── Carga manual de una hoja de control ──────────────────────────────────────
 function CargarHoja({perfil,onCargado}){
+  const isMobile=useMobile();
   const [maquinas,setMaquinas]=useState([]);
   const [f,setF]=useState({maquina:"",fecha:hoyIso(),turno:"dia",operario:"",medida:"",
                            filas:"",bultos:"",scrapEmpalme:"",scrapRollo:"",observaciones:""});
@@ -473,31 +483,59 @@ function CargarHoja({perfil,onCargado}){
         <div style={{color:GR,fontSize:11}}>{conPeso.length} cargada(s) · <span style={{color:O,fontWeight:700}}>{fnum(kilos)} kg</span></div>
       </div>
 
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",minWidth:540}}>
-          <thead><tr>
-            {["N°","Peso (kg)","Iniciales","Estado","Defecto",""].map(h=>(
-              <th key={h} style={{textAlign:"left",color:GR,fontSize:10,letterSpacing:1,padding:"0 6px 6px 0",whiteSpace:"nowrap"}}>{h.toUpperCase()}</th>))}
-          </tr></thead>
-          <tbody>
-            {bobinas.map((b,i)=>(<tr key={i}>
-              <td style={{padding:"0 6px 6px 0",width:70}}><input style={{...celda,width:70}} value={b.n} onChange={e=>setBob(i,"n",e.target.value)}/></td>
-              <td style={{padding:"0 6px 6px 0",width:100}}><input type="number" style={{...celda,width:100}} value={b.peso} onChange={e=>setBob(i,"peso",e.target.value)}/></td>
-              <td style={{padding:"0 6px 6px 0",width:90}}><input style={{...celda,width:90}} value={b.iniciales} onChange={e=>setBob(i,"iniciales",e.target.value)}/></td>
-              <td style={{padding:"0 6px 6px 0",width:130}}>
-                <div style={{display:"flex",gap:4}}>
-                  {[["BIEN",GN],["MAL",RE]].map(([v,c])=>(
-                    <button key={v} onClick={()=>setBob(i,"estado",v)} style={{...Btn(b.estado===v?c:"transparent",b.estado===v?D:GR,{flex:1,fontSize:10,padding:"7px 4px"})}}>{v}</button>))}
-                </div>
-              </td>
-              <td style={{padding:"0 6px 6px 0"}}><input style={celda} value={b.defecto} onChange={e=>setBob(i,"defecto",e.target.value)} placeholder={b.estado==="MAL"?"arrugas, fuelle...":""}/></td>
-              <td style={{padding:"0 0 6px 0",width:34}}>
-                <button onClick={()=>quitar(i)} style={{...Btn("transparent",RE,{padding:"7px 9px",fontSize:11,borderColor:RE+"44"})}}>✕</button>
-              </td>
-            </tr>))}
-          </tbody>
-        </table>
-      </div>
+      {isMobile?(
+        // En el celular cada bobina es una tarjeta: se carga con el pulgar, sin scroll lateral.
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {bobinas.map((b,i)=>(<div key={i} style={{background:D,border:"1px solid "+BR,borderRadius:10,padding:12}}>
+            <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:8}}>
+              <div style={{width:64}}>
+                <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>N°</div>
+                <input style={celda} value={b.n} onChange={e=>setBob(i,"n",e.target.value)} inputMode="numeric"/>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>PESO (KG)</div>
+                <input type="number" style={celda} value={b.peso} onChange={e=>setBob(i,"peso",e.target.value)} inputMode="decimal"/>
+              </div>
+              <div style={{width:84}}>
+                <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>INICIALES</div>
+                <input style={celda} value={b.iniciales} onChange={e=>setBob(i,"iniciales",e.target.value)}/>
+              </div>
+              <button onClick={()=>quitar(i)} style={{...Btn("transparent",RE,{padding:"8px 10px",fontSize:12,borderColor:RE+"44"})}}>✕</button>
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              {[["BIEN",GN],["MAL",RE]].map(([v,c])=>(
+                <button key={v} onClick={()=>setBob(i,"estado",v)} style={{...Btn(b.estado===v?c:"transparent",b.estado===v?D:GR,{flex:1,fontSize:12,padding:"9px 4px"})}}>{v}</button>))}
+            </div>
+            {b.estado==="MAL"&&<input style={{...celda,marginTop:8}} value={b.defecto} onChange={e=>setBob(i,"defecto",e.target.value)} placeholder="Defecto: arrugas, fuelle..."/>}
+          </div>))}
+        </div>
+      ):(
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:540}}>
+            <thead><tr>
+              {["N°","Peso (kg)","Iniciales","Estado","Defecto",""].map(h=>(
+                <th key={h} style={{textAlign:"left",color:GR,fontSize:10,letterSpacing:1,padding:"0 6px 6px 0",whiteSpace:"nowrap"}}>{h.toUpperCase()}</th>))}
+            </tr></thead>
+            <tbody>
+              {bobinas.map((b,i)=>(<tr key={i}>
+                <td style={{padding:"0 6px 6px 0",width:70}}><input style={{...celda,width:70}} value={b.n} onChange={e=>setBob(i,"n",e.target.value)}/></td>
+                <td style={{padding:"0 6px 6px 0",width:100}}><input type="number" style={{...celda,width:100}} value={b.peso} onChange={e=>setBob(i,"peso",e.target.value)}/></td>
+                <td style={{padding:"0 6px 6px 0",width:90}}><input style={{...celda,width:90}} value={b.iniciales} onChange={e=>setBob(i,"iniciales",e.target.value)}/></td>
+                <td style={{padding:"0 6px 6px 0",width:130}}>
+                  <div style={{display:"flex",gap:4}}>
+                    {[["BIEN",GN],["MAL",RE]].map(([v,c])=>(
+                      <button key={v} onClick={()=>setBob(i,"estado",v)} style={{...Btn(b.estado===v?c:"transparent",b.estado===v?D:GR,{flex:1,fontSize:10,padding:"7px 4px"})}}>{v}</button>))}
+                  </div>
+                </td>
+                <td style={{padding:"0 6px 6px 0"}}><input style={celda} value={b.defecto} onChange={e=>setBob(i,"defecto",e.target.value)} placeholder={b.estado==="MAL"?"arrugas, fuelle...":""}/></td>
+                <td style={{padding:"0 0 6px 0",width:34}}>
+                  <button onClick={()=>quitar(i)} style={{...Btn("transparent",RE,{padding:"7px 9px",fontSize:11,borderColor:RE+"44"})}}>✕</button>
+                </td>
+              </tr>))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <button onClick={agregar} style={{...Btn("transparent",O,{marginTop:10,fontSize:12,padding:"8px 14px",borderColor:O})}}>+ Agregar bobina</button>
     </div>
@@ -577,7 +615,7 @@ function Produccion(){
     {cargando?<p style={{color:GR,fontSize:12}}>Cargando...</p>:(
     bobinas.length===0?(
       <div style={{textAlign:"center",padding:40,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12}}>
-        <p>No hay datos de producción en este rango. Se cargan solos cuando se sube una foto de la hoja de control.</p>
+        <p>No hay datos de producción en este rango.<br/>Cargá una hoja desde la pestaña <strong style={{color:O}}>📝 Cargar hoja</strong>, o mandá una foto por Telegram si ya conectaste n8n.</p>
       </div>
     ):(<>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
@@ -637,7 +675,7 @@ function App(){
 
   return(
     <div style={{minHeight:"100vh",fontFamily:"Montserrat,sans-serif",background:D,color:W}}>
-      <Header nombre={perfil?.nombre} tab={tab} setTab={setTab}/>
+      <Header nombre={perfil?.nombre} tab={tab} setTab={setTab} isMobile={isMobile}/>
       <div style={{padding:isMobile?14:24,maxWidth:1100,margin:"0 auto"}}>
         {tab==="monitoreo"&&<Monitoreo perfil={perfil}/>}
         {tab==="maquinas"&&(<>

@@ -6,8 +6,11 @@ body{background:#111827;font-family:'Montserrat',sans-serif;}
 #splash-sub{font-family:'Montserrat',sans-serif;font-size:11px;color:#9CA3AF;letter-spacing:3px;}
 #splash-dot{width:8px;height:8px;border-radius:50%;background:#f59e0b;animation:pulse 1s ease-in-out infinite;}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}
-::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:#374151;border-radius:4px;}
+/* La barra de pestañas scrollea en horizontal en pantallas angostas, sin barra visible */
+.barra-tabs{scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+.barra-tabs::-webkit-scrollbar{display:none;}
 select option{background:#1F2937;}
 input,select,textarea{outline:none;}
 button{font-family:'Montserrat',sans-serif;}
