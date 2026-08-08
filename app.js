@@ -143,6 +143,36 @@ const db = {
     return (data||[]).map(fromEstado);
   },
 
+  // Carga manual de una hoja de control (misma RPC que usa n8n con las fotos:
+  // evita bobinas duplicadas y crea máquina/operario si no existen).
+  async cargarParte(parte) {
+    const datos = {
+      empresa: EMPRESA,
+      planta: "Rolleras",
+      maquina: parte.maquina,
+      operario: parte.operario || "",
+      fecha: parte.fecha,
+      turno: parte.turno,
+      medida: parte.medida || "",
+      filas: parte.filas || null,
+      bultos: parte.bultos || null,
+      observaciones: parte.observaciones || "",
+      scrap_empalme: Number(parte.scrapEmpalme) || 0,
+      scrap_rollo: Number(parte.scrapRollo) || 0,
+      origen: "carga manual",
+      bobinas: parte.bobinas.map(b=>({
+        n_bobina: String(b.n).trim(),
+        peso: Number(b.peso) || null,
+        iniciales: (b.iniciales||"").toUpperCase().trim(),
+        estado: b.estado || null,
+        defecto: (b.defecto||"").trim()
+      }))
+    };
+    const {data,error} = await SB.rpc("cargar_parte",{datos});
+    if(error) return {ok:false, detalle:error.message};
+    return {ok:true, resultado:data};
+  },
+
   // Estadísticas de producción (hojas de control ya cargadas por foto → Gemini)
   async loadProduccion(desde, hasta) {
     const [b,p] = await Promise.all([

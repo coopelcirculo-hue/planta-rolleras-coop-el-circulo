@@ -414,6 +414,10 @@ to anon, authenticated;
 revoke execute on function cargar_parte(jsonb) from anon, authenticated;
 revoke execute on function consulta_lectura(text) from anon, authenticated;
 
+-- La app permite cargar una hoja de control a mano (respaldo por si la foto
+-- sale ilegible), así que los usuarios logueados sí pueden llamar cargar_parte.
+grant execute on function cargar_parte(jsonb) to authenticated;
+
 -- ---------- MONITOREO EN VIVO DE MÁQUINAS ----------
 -- Cada fila es un tramo: la máquina estuvo en tal estado desde `inicio` hasta `fin`.
 -- El tramo con `fin` NULL es lo que está pasando AHORA.
