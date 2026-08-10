@@ -1,0 +1,219 @@
+{
+  "name": "Coop El Circulo - Carga de hojas (solo formulario)",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Carga de hoja de control",
+        "formDescription": "Subi la foto de la hoja de control del turno. El sistema la procesa automaticamente.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Hoja",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Maquina",
+              "fieldType": "text",
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "Planta",
+              "fieldType": "text",
+              "requiredField": false
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "r1000000-0000-4000-8000-000000000003",
+      "name": "Formulario web",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Valida el archivo que llego por el formulario y lo normaliza.\nconst it = $input.first();\nconst bin = it.json && it.binary ? it.binary : (it.binary || {});\nconst clave = Object.keys(bin)[0];\nif (!clave) throw new Error('No llego ningun archivo de imagen');\nconst archivo = bin[clave];\nconst mime = archivo.mimeType || '';\nif (!mime.startsWith('image/') && mime !== 'application/pdf' && mime !== 'application/octet-stream') {\n  throw new Error('El archivo no es una imagen valida: ' + mime);\n}\n\nreturn [{ json: {\n  origen: 'formulario',\n  chat_id: '',\n  maquina_hint: it.json['Maquina'] || '',   // la ROLLERA que eligio la persona\n  planta: it.json['Planta'] || ''\n}, binary: { data: archivo } }];"
+      },
+      "id": "r1000000-0000-4000-8000-000000000005",
+      "name": "Preparar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-3.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-3.5-flash"
+        },
+        "text": "Esta es la foto de una 'Hoja de Control de Bobinas' completada a mano en una fabrica. Extrae los datos y responde UNICAMENTE con un JSON valido, sin explicaciones ni bloques de codigo. Formato exacto: {\"maquina\": \"numero escrito en BOBINA DE MAQUINA\", \"fecha\": \"YYYY-MM-DD\", \"turno\": \"dia o noche segun el casillero marcado\", \"operario\": \"nombre del campo Operario\", \"bobinas\": [{\"n_bobina\": \"ej 10-189\", \"peso\": 43200, \"iniciales\": \"ej G.C\", \"estado\": \"BIEN o MAL segun la casilla marcada\", \"defecto\": \"combinacion de Arrugas / Fuelle marcados y el texto de Otro, o cadena vacia\"}], \"scrap_empalme\": 1200, \"scrap_rollo\": 17300, \"medida\": \"texto de MEDIDA\", \"filas\": 3, \"bultos\": 120, \"observaciones\": \"texto de OBSERVACIONES\"}. REGLAS ESTRICTAS: 1) NUNCA inventes datos: si un campo no esta escrito usa null, y si esta escrito pero no se puede leer con seguridad usa la cadena \"ILEGIBLE\". 2) Incluye solo las filas de la tabla con datos. 3) Pesos y scrap son enteros sin separadores de miles (43,200 se escribe 43200). 4) La fecha esta como dia/mes/anio y el anio 26 significa 2026. 5) En estado responde BIEN o MAL solo si una casilla esta claramente marcada; si no, null.",
+        "inputType": "binary",
+        "binaryPropertyName": "data",
+        "simplify": true,
+        "maxOutputTokens": 4000,
+        "options": {}
+      },
+      "id": "r1000000-0000-4000-8000-000000000006",
+      "name": "LeerParte",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validaciones automaticas: nunca se guarda nada inventado.\n// errores  -> bloquean la carga\n// advertencias -> se guarda igual pero se avisa que revisar\nconst salida = $input.first().json;\nlet textoIA = salida.content?.parts?.[0]?.text ?? salida.text ?? '';\nconst limpio = textoIA.replace(/```json/gi, '').replace(/```/g, '').trim();\nlet d;\ntry {\n  d = JSON.parse(limpio);\n} catch (e) {\n  throw new Error('La IA no devolvio un JSON valido: ' + textoIA.substring(0, 300));\n}\n\nconst prep = $('Preparar').first().json;\nconst errores = [];\nconst adv = [];\nconst esIlegible = v => typeof v === 'string' && v.toUpperCase().includes('ILEGIBLE');\n\n// --- fecha (obligatoria) ---\nlet fecha = d.fecha;\nif (!fecha || esIlegible(fecha) || isNaN(new Date(fecha + 'T00:00:00').getTime())) {\n  errores.push('Fecha faltante o ilegible: revisar la hoja');\n  fecha = null;\n} else {\n  const f = new Date(fecha + 'T00:00:00');\n  const dias = (Date.now() - f.getTime()) / 86400000;\n  if (dias < -1) adv.push('La fecha es futura (' + fecha + '): verificar');\n  if (dias > 60) adv.push('La fecha tiene mas de 60 dias (' + fecha + '): verificar');\n}\n\n// --- turno ---\nlet turno = String(d.turno || '').toLowerCase();\nif (turno !== 'dia' && turno !== 'noche') {\n  adv.push('Turno sin marcar o ilegible: se guarda como \"dia\", verificar');\n  turno = 'dia';\n}\n\n// --- operario y maquina ---\nlet operario = (!d.operario || esIlegible(d.operario)) ? '' : String(d.operario).trim();\nif (!operario) adv.push('Operario faltante o ilegible');\n// La ROLLERA que corto la elige la persona al subir la hoja (campo Maquina del\n// formulario). Es la maquina de la planta: define los kilos por maquina.\nlet rollera = String(prep.maquina_hint || '').trim();\nif (!rollera) errores.push('Falta indicar en que rollera se corto: elegila al subir la hoja');\n\n// Lo que dice la hoja en BOBINA DE MAQUINA es la extrusora que fabrico la bobina,\n// no la rollera. Se guarda solo como dato de trazabilidad.\nlet maquina_origen = (d.maquina && !esIlegible(d.maquina)) ? String(d.maquina).trim() : '';\nif (!maquina_origen) adv.push('Maquina de origen de la bobina faltante o ilegible');\n\n// --- bobinas ---\nconst vistas = new Set();\nconst bobinas = [];\nfor (const b of (d.bobinas || [])) {\n  const n = String(b.n_bobina || '').trim();\n  if (!n || esIlegible(n)) { adv.push('Hay una fila de bobina sin numero legible: no se carga'); continue; }\n  if (vistas.has(n)) { adv.push('Bobina repetida en la hoja: ' + n + ' (se carga una sola vez)'); continue; }\n  vistas.add(n);\n\n  let peso = Number(b.peso);\n  if (!peso || isNaN(peso) || esIlegible(String(b.peso))) {\n    peso = null;\n    adv.push('Bobina ' + n + ': peso faltante o ilegible');\n  } else if (peso < 10000 || peso > 100000) {\n    adv.push('Bobina ' + n + ': peso fuera del rango habitual (' + peso + '), verificar');\n  }\n\n  let estado = String(b.estado || '').toUpperCase();\n  if (estado !== 'BIEN' && estado !== 'MAL') {\n    estado = null;\n    adv.push('Bobina ' + n + ': estado BIEN/MAL sin marcar o ilegible');\n  }\n\n  bobinas.push({\n    n_bobina: n,\n    peso,\n    iniciales: (b.iniciales && !esIlegible(b.iniciales)) ? String(b.iniciales).toUpperCase().trim() : '',\n    estado,\n    defecto: (b.defecto && !esIlegible(b.defecto)) ? String(b.defecto).trim() : ''\n  });\n}\nif (bobinas.length === 0) errores.push('No se pudo leer ninguna bobina de la hoja');\n\n// --- scrap ---\nconst se = Number(d.scrap_empalme);\nconst sr = Number(d.scrap_rollo);\nif (d.scrap_empalme == null || isNaN(se)) adv.push('Scrap de empalme faltante o ilegible (se guarda 0)');\nif (d.scrap_rollo == null || isNaN(sr)) adv.push('Scrap de rollo faltante o ilegible (se guarda 0)');\n\nconst datos = {\n  empresa: 'Coop El Circulo',\n  planta: prep.planta || 'Rolleras',\n  rollera, maquina_origen, operario, fecha, turno, bobinas,\n  scrap_empalme: isNaN(se) ? 0 : se,\n  scrap_rollo: isNaN(sr) ? 0 : sr,\n  medida: (d.medida && !esIlegible(d.medida)) ? d.medida : '',\n  filas: Number(d.filas) || null,\n  bultos: Number(d.bultos) || null,\n  observaciones: (d.observaciones && !esIlegible(d.observaciones)) ? d.observaciones : '',\n  origen: prep.origen\n};\n\nreturn [{ json: { datos, errores, advertencias: adv, chat_id: prep.chat_id } }];"
+      },
+      "id": "r1000000-0000-4000-8000-000000000007",
+      "name": "ValidarDatos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "s1000000-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.errores.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "r1000000-0000-4000-8000-000000000008",
+      "name": "SinErrores",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        160,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://yequwsdaqbihkmjtyuvm.supabase.co/rest/v1/rpc/cargar_parte",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ datos: $json.datos }) }}",
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllcXV3c2RhcWJpaGttanR5dXZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Nzk1MTcsImV4cCI6MjEwMTQ1NTUxN30.6M_UMFBvd3thFlDEwiZZwjXkAAGxXnE-IUFYsS1Xcj0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllcXV3c2RhcWJpaGttanR5dXZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Nzk1MTcsImV4cCI6MjEwMTQ1NTUxN30.6M_UMFBvd3thFlDEwiZZwjXkAAGxXnE-IUFYsS1Xcj0"
+            }
+          ]
+        }
+      },
+      "id": "r1000000-0000-4000-8000-000000000009",
+      "name": "GuardarParte",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        380,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Formulario web": {
+      "main": [
+        [
+          {
+            "node": "Preparar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar": {
+      "main": [
+        [
+          {
+            "node": "LeerParte",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LeerParte": {
+      "main": [
+        [
+          {
+            "node": "ValidarDatos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ValidarDatos": {
+      "main": [
+        [
+          {
+            "node": "SinErrores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SinErrores": {
+      "main": [
+        [
+          {
+            "node": "GuardarParte",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false
+}
