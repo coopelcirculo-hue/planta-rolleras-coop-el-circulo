@@ -9,6 +9,11 @@ const SUPABASE_CONFIGURADO = true;
 // manda el flujo de ingesta de n8n en el campo "empresa" de cada hoja de control).
 const EMPRESA = "Coop El Circulo";
 
+// Formulario de n8n que lee la foto de la hoja con IA y la guarda en Supabase.
+// La app le manda la foto directamente acá, sin que haya que salir del dashboard.
+// Si en n8n se reimporta el workflow, este id cambia y hay que actualizarlo.
+const N8N_FORM_URL = "https://asd-n8n.8mjdss.easypanel.host/form/7887728a-5a8a-4920-a575-70fbf4fc9a37";
+
 // ── Colores ───────────────────────────────────────────────────────────────────
 const O="#f59e0b",D="#111827",CA="#1a2232",CB="#1F2937",BR="#2d3748",GR="#9CA3AF",W="#F8FAFC",RE="#ef4444",GN="#22c55e",BL="#60a5fa",PU="#a78bfa";
 
@@ -141,6 +146,36 @@ const db = {
     const {data} = await SB.from("estados_maquina").select("*")
       .eq("maquina_id",maquinaId).order("inicio",{ascending:false}).limit(100);
     return (data||[]).map(fromEstado);
+  },
+
+  // Manda la foto al formulario de n8n (campos: field-0 la foto, field-1 máquina,
+  // field-2 planta). n8n la lee con Gemini y la guarda en Supabase.
+  async subirFoto(archivo, maquina) {
+    const fd = new FormData();
+    fd.append("field-0", archivo, archivo.name || "hoja.jpg");
+    fd.append("field-1", maquina || "");
+    fd.append("field-2", "Rolleras");
+    try {
+      const r = await fetch(N8N_FORM_URL, { method:"POST", body: fd });
+      if(!r.ok) return {ok:false, detalle:"n8n respondió "+r.status+". ¿El workflow está activo?"};
+      return {ok:true};
+    } catch(e) {
+      return {ok:false, detalle:"No se pudo conectar con n8n: "+e.message};
+    }
+  },
+
+  // Cuántos partes hay cargados: sirve para detectar cuándo entró la foto nueva.
+  async contarPartes() {
+    const {count} = await SB.from("v_producciones")
+      .select("*",{count:"exact",head:true}).eq("empresa",EMPRESA);
+    return count || 0;
+  },
+
+  // El último parte cargado, para mostrar qué leyó la IA.
+  async ultimoParte() {
+    const {data} = await SB.from("v_producciones").select("*")
+      .eq("empresa",EMPRESA).order("fecha",{ascending:false}).limit(1);
+    return (data||[])[0] || null;
   },
 
   // Carga manual de una hoja de control (misma RPC que usa n8n con las fotos:
