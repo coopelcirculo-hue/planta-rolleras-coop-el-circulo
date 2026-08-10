@@ -221,12 +221,23 @@
       "parameters": {
         "method": "POST",
         "url": "https://yequwsdaqbihkmjtyuvm.supabase.co/rest/v1/rpc/cargar_parte",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "supabaseApi",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ datos: $json.datos }) }}",
-        "options": {}
+        "options": {},
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllcXV3c2RhcWJpaGttanR5dXZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Nzk1MTcsImV4cCI6MjEwMTQ1NTUxN30.6M_UMFBvd3thFlDEwiZZwjXkAAGxXnE-IUFYsS1Xcj0"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllcXV3c2RhcWJpaGttanR5dXZtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU4Nzk1MTcsImV4cCI6MjEwMTQ1NTUxN30.6M_UMFBvd3thFlDEwiZZwjXkAAGxXnE-IUFYsS1Xcj0"
+            }
+          ]
+        }
       },
       "id": "r1000000-0000-4000-8000-000000000009",
       "name": "GuardarParte",
