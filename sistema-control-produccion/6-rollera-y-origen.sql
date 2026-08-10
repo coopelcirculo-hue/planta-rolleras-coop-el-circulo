@@ -121,17 +121,21 @@ end $$;
 grant execute on function cargar_parte(jsonb) to authenticated, anon;
 
 -- ---------- Vistas: exponer la máquina de origen ----------
+-- OJO: create or replace view NO permite insertar una columna en el medio ni
+-- renombrar las existentes; solo agregar al final. Por eso maquina_origen va
+-- última en las dos vistas, y así no hace falta borrarlas (ni sus dependientes).
 create or replace view v_producciones as
 select
   p.id, p.empresa_id, e.nombre as empresa, pl.nombre as planta,
-  m.codigo as maquina, p.maquina_origen, o.nombre as operario,
+  m.codigo as maquina, o.nombre as operario,
   p.fecha, p.turno, p.medida, p.filas, p.bultos, p.observaciones,
   (select count(*) from bobinas b where b.produccion_id = p.id) as bobinas,
   (select coalesce(sum(peso),0) from bobinas b where b.produccion_id = p.id) as kilos,
   (select count(*) from bobinas b where b.produccion_id = p.id and estado = 'BIEN') as bien,
   (select count(*) from bobinas b where b.produccion_id = p.id and estado = 'MAL') as mal,
   coalesce(s.empalme,0) as scrap_empalme,
-  coalesce(s.rollo,0) as scrap_rollo
+  coalesce(s.rollo,0) as scrap_rollo,
+  p.maquina_origen
 from producciones p
 join empresas e on e.id = p.empresa_id
 join plantas pl on pl.id = p.planta_id
@@ -142,14 +146,15 @@ left join scrap s on s.produccion_id = p.id;
 create or replace view v_bobinas as
 select
   b.id, p.empresa_id, e.nombre as empresa, pl.nombre as planta,
-  m.codigo as maquina, p.maquina_origen, p.fecha, p.turno, p.medida,
+  m.codigo as maquina, p.fecha, p.turno, p.medida,
   op.nombre as operario_turno,
   coalesce(ob.nombre, b.iniciales) as operario_bobina,
   b.n_bobina, b.peso, b.estado,
   (select string_agg(coalesce(bd.detalle, d.nombre), ', ')
      from bobina_defectos bd left join defectos d on d.id = bd.defecto_id
     where bd.bobina_id = b.id) as defectos,
-  p.id as produccion_id
+  p.id as produccion_id,
+  p.maquina_origen
 from bobinas b
 join producciones p on p.id = b.produccion_id
 join empresas e on e.id = p.empresa_id
