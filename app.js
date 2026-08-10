@@ -18,7 +18,15 @@ const N8N_FORM_URL = "https://asd-n8n.8mjdss.easypanel.host/form/f4d44909-5d6d-4
 const O="#f59e0b",D="#111827",CA="#1a2232",CB="#1F2937",BR="#2d3748",GR="#9CA3AF",W="#F8FAFC",RE="#ef4444",GN="#22c55e",BL="#60a5fa",PU="#a78bfa";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const fdate = d => new Date(d).toLocaleDateString("es-AR");
+// Una fecha sola ("2026-08-07") la interpreta el navegador como medianoche UTC,
+// y en Argentina (UTC-3) eso cae el día anterior. Por eso se formatea a mano.
+const fdate = d => {
+  if (typeof d === "string") {
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[3] + "/" + m[2] + "/" + m[1];
+  }
+  return new Date(d).toLocaleDateString("es-AR");
+};
 const fnum = n => (Number(n)||0).toLocaleString("es-AR");
 const hoyIso = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const haceDiasIso = n => { const d=new Date(Date.now()-n*86400000); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
