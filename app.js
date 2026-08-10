@@ -12,7 +12,7 @@ const EMPRESA = "Coop El Circulo";
 // Formulario de n8n que lee la foto de la hoja con IA y la guarda en Supabase.
 // La app le manda la foto directamente acá, sin que haya que salir del dashboard.
 // Si en n8n se reimporta el workflow, este id cambia y hay que actualizarlo.
-const N8N_FORM_URL = "https://asd-n8n.8mjdss.easypanel.host/form/325ae174-6f21-4392-965f-587a40f3f135";
+const N8N_FORM_URL = "https://asd-n8n.8mjdss.easypanel.host/form/f4d44909-5d6d-466c-b13e-9017ae9ac21e";
 
 // ── Colores ───────────────────────────────────────────────────────────────────
 const O="#f59e0b",D="#111827",CA="#1a2232",CB="#1F2937",BR="#2d3748",GR="#9CA3AF",W="#F8FAFC",RE="#ef4444",GN="#22c55e",BL="#60a5fa",PU="#a78bfa";
