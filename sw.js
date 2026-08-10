@@ -1,4 +1,4 @@
-const CACHE='planta-v3';
+const CACHE='planta-v4';
 // Rutas relativas: la app puede vivir en la raíz o en un subdirectorio (GitHub Pages).
 const CORE=['./','./index.html','./dashboard.html','./app.js','./style.css','./manifest.json'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)));self.skipWaiting();});

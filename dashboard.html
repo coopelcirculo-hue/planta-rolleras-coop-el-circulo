@@ -32,9 +32,10 @@ function Modal({title,children,onClose}){return(<div style={{position:"fixed",in
 // En el celular las etiquetas se acortan y la barra scrollea en horizontal,
 // así ninguna pestaña queda cortada.
 const TABS=[["monitoreo","🟢","Monitoreo","Monitoreo"],
+            ["reportes","📈","Reportes","Reportes"],
             ["maquinas","🔧","Máquinas y eventos","Máquinas"],
             ["cargar","📝","Cargar hoja","Cargar"],
-            ["produccion","📊","Producción","Datos"]];
+            ["produccion","📊","Producción","Gráficos"]];
 
 function Header({nombre,tab,setTab,isMobile}){
   const logout=async()=>{await clearSess();window.location.href="index.html";};
@@ -411,6 +412,8 @@ function SubirFoto({maquinas,onListo}){
   const [archivo,setArchivo]=useState(null);
   const [maquina,setMaquina]=useState("");
   const [estado,setEstado]=useState(null); // {tipo, texto}
+  // Dos inputs: uno abre la cámara (solo celular/tablet), el otro el explorador.
+  const refCamara=useRef(null);
   const refInput=useRef(null);
 
   const elegir=e=>{ const f=e.target.files?.[0]; if(f){ setArchivo(f); setEstado(null); } };
@@ -455,13 +458,17 @@ function SubirFoto({maquinas,onListo}){
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:12}}>
       <div>
         <div style={{color:GR,fontSize:10,letterSpacing:1,marginBottom:5}}>FOTO DE LA HOJA</div>
-        <input ref={refInput} type="file" accept="image/*" capture="environment" onChange={elegir}
-          style={{...inp,padding:"8px 10px",fontSize:12}}/>
+        <input ref={refCamara} type="file" accept="image/*" capture="environment" onChange={elegir} style={{display:"none"}}/>
+        <input ref={refInput} type="file" accept="image/*" onChange={elegir} style={{display:"none"}}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>refCamara.current?.click()} style={{...Btn("transparent",O,{flex:1,fontSize:12,padding:"10px 8px",borderColor:O})}}>📷 Sacar foto</button>
+          <button onClick={()=>refInput.current?.click()} style={{...Btn("transparent",GR,{flex:1,fontSize:12,padding:"10px 8px"})}}>🖼️ Elegir archivo</button>
+        </div>
       </div>
       <div>
-        <div style={{color:GR,fontSize:10,letterSpacing:1,marginBottom:5}}>MÁQUINA (OPCIONAL)</div>
+        <div style={{color:GR,fontSize:10,letterSpacing:1,marginBottom:5}}>ROLLERA QUE CORTÓ</div>
         <select style={inp} value={maquina} onChange={e=>setMaquina(e.target.value)}>
-          <option value="">La leo de la hoja</option>
+          <option value="">Elegir...</option>
           {maquinas.map(m=><option key={m.id} value={m.codigo}>{tituloMaquina(m.codigo)}</option>)}
         </select>
       </div>
@@ -471,10 +478,13 @@ function SubirFoto({maquinas,onListo}){
       📎 {archivo.name} · {Math.round(archivo.size/1024)} KB
     </div>}
 
-    <button onClick={enviar} disabled={!archivo||procesando}
-      style={{...Btn(O,D,{width:"100%",padding:"12px",fontSize:13,opacity:archivo&&!procesando?1:0.5})}}>
+    <button onClick={enviar} disabled={!archivo||!maquina||procesando}
+      style={{...Btn(O,D,{width:"100%",padding:"12px",fontSize:13,opacity:archivo&&maquina&&!procesando?1:0.5})}}>
       {procesando?"Procesando...":"Subir y leer con IA"}
     </button>
+    {(!archivo||!maquina)&&!procesando&&<div style={{color:GR,fontSize:11,marginTop:8,textAlign:"center"}}>
+      Falta {!archivo?"la foto":""}{!archivo&&!maquina?" y ":""}{!maquina?"elegir la rollera":""}.
+    </div>}
 
     {estado&&<div style={{marginTop:12,padding:11,borderRadius:8,fontSize:12,lineHeight:1.6,
         background:colorEstado+"15",color:colorEstado}}>
@@ -487,7 +497,7 @@ function SubirFoto({maquinas,onListo}){
 function CargarHoja({perfil,onCargado}){
   const isMobile=useMobile();
   const [maquinas,setMaquinas]=useState([]);
-  const [f,setF]=useState({maquina:"",fecha:hoyIso(),turno:"dia",operario:"",medida:"",
+  const [f,setF]=useState({rollera:"",maquinaOrigen:"",fecha:hoyIso(),turno:"dia",operario:"",medida:"",
                            filas:"",bultos:"",scrapEmpalme:"",scrapRollo:"",observaciones:""});
   const [bobinas,setBobinas]=useState([{n:"1",peso:"",iniciales:"",estado:"BIEN",defecto:""}]);
   const [msg,setMsg]=useState(null);
@@ -507,7 +517,7 @@ function CargarHoja({perfil,onCargado}){
 
   const conPeso=bobinas.filter(b=>Number(b.peso)>0);
   const kilos=conPeso.reduce((a,b)=>a+Number(b.peso),0);
-  const valido=f.maquina&&f.fecha&&conPeso.length>0&&conPeso.every(b=>String(b.n).trim());
+  const valido=f.rollera&&f.fecha&&conPeso.length>0&&conPeso.every(b=>String(b.n).trim());
 
   const guardar=async()=>{
     setGuardando(true); setMsg(null);
@@ -534,11 +544,14 @@ function CargarHoja({perfil,onCargado}){
 
     <div style={{background:CA,border:"1px solid "+BR,borderRadius:12,padding:16,marginBottom:14}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12}}>
-        <Field label="Máquina">
-          <select style={inp} value={f.maquina} onChange={e=>s("maquina",e.target.value)}>
+        <Field label="Rollera que cortó">
+          <select style={inp} value={f.rollera} onChange={e=>s("rollera",e.target.value)}>
             <option value="">Seleccionar...</option>
             {maquinas.map(m=><option key={m.id} value={m.codigo}>{tituloMaquina(m.codigo)}</option>)}
           </select>
+        </Field>
+        <Field label="Máquina de origen (bobina)">
+          <input style={inp} value={f.maquinaOrigen} onChange={e=>s("maquinaOrigen",e.target.value)} placeholder="La que dice la hoja"/>
         </Field>
         <Field label="Fecha"><input type="date" style={inp} value={f.fecha} onChange={e=>s("fecha",e.target.value)}/></Field>
         <Field label="Turno">
@@ -632,7 +645,7 @@ function CargarHoja({perfil,onCargado}){
       {guardando?"Guardando...":"Guardar hoja de control"}
     </button>
     {!valido&&<div style={{color:GR,fontSize:11,marginTop:8,textAlign:"center"}}>
-      Falta elegir máquina y cargar al menos una bobina con número y peso.
+      Falta elegir la rollera y cargar al menos una bobina con número y peso.
     </div>}
   </div>);
 }
@@ -714,6 +727,194 @@ function Produccion(){
   </div>);
 }
 
+// ── Reportes (semanal / trimestral) ──────────────────────────────────────────
+function Barra({valor,max,color}){
+  return(<div style={{flex:1,background:BR,borderRadius:4,height:8,overflow:"hidden"}}>
+    <div style={{width:Math.round((valor/(max||1))*100)+"%",background:color,height:"100%",borderRadius:4}}/>
+  </div>);
+}
+
+function Reportes(){
+  const [periodo,setPeriodo]=useState("semana");
+  const [desde,setDesde]=useState(haceDiasIso(7));
+  const [hasta,setHasta]=useState(hoyIso());
+  const [bobinas,setBobinas]=useState([]);
+  const [producciones,setProducciones]=useState([]);
+  const [cargando,setCargando]=useState(true);
+  const [buscar,setBuscar]=useState("");
+
+  // Los períodos que pidieron: la semana y el trimestre cerrado.
+  const aplicar=p=>{
+    setPeriodo(p);
+    const hoy=new Date();
+    if(p==="semana"){ setDesde(haceDiasIso(7)); setHasta(hoyIso()); }
+    if(p==="mes"){ setDesde(haceDiasIso(30)); setHasta(hoyIso()); }
+    if(p==="trimestre"){ setDesde(haceDiasIso(90)); setHasta(hoyIso()); }
+  };
+
+  useEffect(()=>{ (async()=>{
+    setCargando(true);
+    const d=await db.loadProduccion(desde,hasta);
+    setBobinas(d.bobinas); setProducciones(d.producciones); setCargando(false);
+  })(); },[desde,hasta]);
+
+  const kilos=bobinas.reduce((a,b)=>a+(+b.peso||0),0);
+  const mal=bobinas.filter(b=>b.estado==="MAL");
+  const pctError=bobinas.length?(100*mal.length/bobinas.length).toFixed(1)+"%":"—";
+  const se=producciones.reduce((a,x)=>a+(+x.scrap_empalme||0),0);
+  const sr=producciones.reduce((a,x)=>a+(+x.scrap_rollo||0),0);
+
+  // Operarios con más errores (y sobre cuántas bobinas hicieron)
+  const porOperario=()=>{
+    const m={};
+    for(const b of bobinas){
+      const k=b.operario_bobina||"S/D";
+      if(!m[k]) m[k]={nombre:k,total:0,mal:0,kilos:0};
+      m[k].total++; m[k].kilos+=(+b.peso||0);
+      if(b.estado==="MAL") m[k].mal++;
+    }
+    return Object.values(m).sort((a,b)=>b.mal-a.mal);
+  };
+  const ops=porOperario();
+  const maxMal=ops[0]?.mal||1;
+
+  // Defectos más comunes
+  const porDefecto=()=>{
+    const m={};
+    for(const b of bobinas){
+      if(!b.defectos) continue;
+      for(const d of String(b.defectos).split(",").map(s=>s.trim().toLowerCase()).filter(Boolean))
+        m[d]=(m[d]||0)+1;
+    }
+    return Object.entries(m).map(([nombre,cant])=>({nombre,cant})).sort((a,b)=>b.cant-a.cant);
+  };
+  const defs=porDefecto();
+  const maxDef=defs[0]?.cant||1;
+
+  // Kilos por rollera (las máquinas de la planta)
+  const porMaquina=()=>{
+    const m={};
+    for(const b of bobinas){
+      const k=b.maquina||"S/D";
+      if(!m[k]) m[k]={maquina:k,kilos:0,total:0,mal:0};
+      m[k].kilos+=(+b.peso||0); m[k].total++;
+      if(b.estado==="MAL") m[k].mal++;
+    }
+    return Object.values(m).sort((a,b)=>b.kilos-a.kilos);
+  };
+  const maqs=porMaquina();
+  const maxKilos=maqs[0]?.kilos||1;
+
+  // Trazabilidad: buscar una bobina por número
+  const encontradas=buscar.trim()
+    ? bobinas.filter(b=>String(b.n_bobina).toLowerCase().includes(buscar.trim().toLowerCase()))
+    : [];
+
+  const Caja=({titulo,children})=>(
+    <div style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:18}}>
+      <div style={{color:W,fontWeight:700,fontSize:13,marginBottom:14}}>{titulo}</div>
+      {children}
+    </div>
+  );
+
+  return(<div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {[["semana","Semana"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
+        <button key={id} onClick={()=>aplicar(id)} style={{...Btn(periodo===id?O:"transparent",periodo===id?D:GR,{padding:"7px 16px",fontSize:12})}}>{lbl}</button>
+      ))}
+    </div>
+    {periodo==="rango"&&<div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+      <div><div style={{color:GR,fontSize:10,marginBottom:4}}>DESDE</div><input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>
+      <div><div style={{color:GR,fontSize:10,marginBottom:4}}>HASTA</div><input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>
+    </div>}
+
+    {cargando?<p style={{color:GR,fontSize:12}}>Cargando...</p>:
+     bobinas.length===0?(
+      <div style={{textAlign:"center",padding:40,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12}}>
+        <p>No hay datos en este período.</p>
+      </div>
+     ):(<>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:18}}>
+        <StatCard v={fnum(kilos)} l="Kilos" s="del período" c={O}/>
+        <StatCard v={bobinas.length} l="Bobinas" s={producciones.length+" hojas"} c={W}/>
+        <StatCard v={mal.length} l="Con error" s={pctError+" del total"} c={mal.length?RE:GN}/>
+        <StatCard v={fnum(se+sr)} l="Scrap (kg)" s={kilos?(100*(se+sr)/kilos).toFixed(2)+"%":"—"} c={BL}/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14,marginBottom:14}}>
+        <Caja titulo="⚠️ Operarios con más errores">
+          {ops.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:ops.map((o,i)=>(
+            <div key={i} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                <span style={{color:W,fontWeight:600}}>{o.nombre}</span>
+                <span style={{color:o.mal?RE:GN,fontWeight:700}}>{o.mal} de {o.total}</span>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <Barra valor={o.mal} max={maxMal} color={RE}/>
+                <span style={{color:GR,fontSize:10,minWidth:44,textAlign:"right"}}>{o.total?(100*o.mal/o.total).toFixed(0):0}%</span>
+              </div>
+            </div>
+          ))}
+        </Caja>
+
+        <Caja titulo="🔧 Defectos más comunes">
+          {defs.length===0?<p style={{color:GR,fontSize:12}}>Sin defectos registrados.</p>:defs.map((d,i)=>(
+            <div key={i} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                <span style={{color:W}}>{i+1}. {d.nombre}</span>
+                <span style={{color:O,fontWeight:700}}>{d.cant}</span>
+              </div>
+              <Barra valor={d.cant} max={maxDef} color={O}/>
+            </div>
+          ))}
+        </Caja>
+
+        <Caja titulo="🏭 Kilos por rollera">
+          {maqs.map((m,i)=>(
+            <div key={i} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
+                <span style={{color:W,fontWeight:600}}>{tituloMaquina(m.maquina)}</span>
+                <span style={{color:O,fontWeight:700}}>{fnum(m.kilos)} kg</span>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <Barra valor={m.kilos} max={maxKilos} color={PU}/>
+                <span style={{color:GR,fontSize:10,minWidth:70,textAlign:"right"}}>{m.total} bob · {m.mal} mal</span>
+              </div>
+            </div>
+          ))}
+        </Caja>
+
+        <Caja titulo="🔎 Buscar bobina">
+          <p style={{color:GR,fontSize:11,marginBottom:10,lineHeight:1.5}}>
+            Si una bobina salió con una falla grave, buscá su número para saber quién la hizo
+            y de qué máquina de origen vino.
+          </p>
+          <input style={inp} value={buscar} onChange={e=>setBuscar(e.target.value)} placeholder="Número de bobina, ej: 10-189"/>
+          {buscar.trim()&&(encontradas.length===0
+            ? <p style={{color:GR,fontSize:12,marginTop:12}}>No aparece en este período. Probá ampliando el rango.</p>
+            : <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8,maxHeight:260,overflowY:"auto"}}>
+                {encontradas.map((b,i)=>(
+                  <div key={i} style={{background:D,borderRadius:8,padding:10,fontSize:12,
+                       borderLeft:"3px solid "+(b.estado==="MAL"?RE:GN)}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                      <span style={{color:W,fontWeight:700}}>N° {b.n_bobina}</span>
+                      <span style={{color:b.estado==="MAL"?RE:GN,fontWeight:700}}>{b.estado||"—"}</span>
+                    </div>
+                    <div style={{color:GR,fontSize:11,lineHeight:1.6}}>
+                      Operario: <span style={{color:W}}>{b.operario_bobina||"S/D"}</span> · {fnum(b.peso)} kg<br/>
+                      {tituloMaquina(b.maquina)} · {fdate(b.fecha)} · turno {b.turno}<br/>
+                      {b.maquina_origen?<>Bobina de máquina <span style={{color:W}}>{b.maquina_origen}</span><br/></>:null}
+                      {b.defectos?<span style={{color:O}}>Defecto: {b.defectos}</span>:null}
+                    </div>
+                  </div>
+                ))}
+              </div>)}
+        </Caja>
+      </div>
+     </>)}
+  </div>);
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 function App(){
   const [tab,setTab]=useState("monitoreo");
@@ -771,6 +972,7 @@ function App(){
           />
           <EventosFeed eventos={eventos} maquinas={maquinas} onResolver={resolver} onEliminar={eliminarEvento}/>
         </>)}
+        {tab==="reportes"&&<Reportes/>}
         {tab==="cargar"&&<CargarHoja perfil={perfil} onCargado={()=>{}}/>}
         {tab==="produccion"&&<Produccion/>}
       </div>

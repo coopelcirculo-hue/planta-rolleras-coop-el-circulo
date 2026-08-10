@@ -184,7 +184,8 @@ const db = {
     const datos = {
       empresa: EMPRESA,
       planta: "Rolleras",
-      maquina: parte.maquina,
+      rollera: parte.rollera,                       // la máquina de la planta que cortó
+      maquina_origen: parte.maquinaOrigen || "",    // la extrusora que hizo la bobina
       operario: parte.operario || "",
       fecha: parte.fecha,
       turno: parte.turno,
