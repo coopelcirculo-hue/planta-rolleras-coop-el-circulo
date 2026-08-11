@@ -729,8 +729,9 @@ function Produccion(){
 
 // ── Reportes (semanal / trimestral) ──────────────────────────────────────────
 function Barra({valor,max,color}){
-  return(<div style={{flex:1,background:BR,borderRadius:4,height:8,overflow:"hidden"}}>
-    <div style={{width:Math.round((valor/(max||1))*100)+"%",background:color,height:"100%",borderRadius:4}}/>
+  // Las clases sirven para que las barras sigan viéndose al imprimir en blanco y negro.
+  return(<div className="barra-fondo" style={{flex:1,background:BR,borderRadius:4,height:8,overflow:"hidden"}}>
+    <div className="barra-relleno" style={{width:Math.round((valor/(max||1))*100)+"%",background:color,height:"100%",borderRadius:4}}/>
   </div>);
 }
 
@@ -811,17 +812,24 @@ function Reportes(){
     : [];
 
   const Caja=({titulo,children})=>(
-    <div style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:18}}>
+    <div className="caja-reporte" style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:18}}>
       <div style={{color:W,fontWeight:700,fontSize:13,marginBottom:14}}>{titulo}</div>
       {children}
     </div>
   );
 
   return(<div>
-    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+    <div className="no-imprimir" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
       {[["semana","Semana"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
         <button key={id} onClick={()=>aplicar(id)} style={{...Btn(periodo===id?O:"transparent",periodo===id?D:GR,{padding:"7px 16px",fontSize:12})}}>{lbl}</button>
       ))}
+      <button onClick={()=>window.print()} style={{...Btn("transparent",W,{padding:"7px 16px",fontSize:12,marginLeft:"auto"})}}>🖨️ Imprimir</button>
+    </div>
+
+    {/* Encabezado que solo sale en el papel */}
+    <div className="solo-imprimir">
+      <h1>Reporte de producción — Planta Rolleras</h1>
+      <p>Coop El Círculo · del {fdate(desde)} al {fdate(hasta)} · emitido el {fdate(hoyIso())}</p>
     </div>
     {periodo==="rango"&&<div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
       <div><div style={{color:GR,fontSize:10,marginBottom:4}}>DESDE</div><input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>

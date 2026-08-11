@@ -11,6 +11,26 @@ body{background:#111827;font-family:'Montserrat',sans-serif;}
 /* La barra de pestañas scrollea en horizontal en pantallas angostas, sin barra visible */
 .barra-tabs{scrollbar-width:none;-webkit-overflow-scrolling:touch;}
 .barra-tabs::-webkit-scrollbar{display:none;}
+
+/* ── Impresión de reportes ──────────────────────────────────────────────────
+   La app es de fondo oscuro; en papel eso no sirve. Al imprimir se pasa todo a
+   fondo blanco con texto negro, se ocultan botones y navegación, y las barras
+   de los rankings quedan en gris para que se sigan leyendo. */
+.solo-imprimir{display:none;}
+@media print{
+  @page{margin:14mm;}
+  .no-imprimir, .barra-tabs, header, nav, button{display:none !important;}
+  .solo-imprimir{display:block !important;margin-bottom:18px;}
+  .solo-imprimir h1{font-size:17px;margin-bottom:4px;}
+  .solo-imprimir p{font-size:11px;color:#444 !important;}
+  html,body,#root{height:auto !important;overflow:visible !important;background:#fff !important;}
+  *{background-color:#fff !important;color:#111 !important;border-color:#bbb !important;
+    box-shadow:none !important;}
+  .barra-fondo{background-color:#e5e5e5 !important;}
+  .barra-relleno{background-color:#555 !important;}
+  /* que no se corte una caja en dos hojas */
+  table, .caja-reporte{break-inside:avoid;}
+}
 select option{background:#1F2937;}
 input,select,textarea{outline:none;}
 button{font-family:'Montserrat',sans-serif;}
