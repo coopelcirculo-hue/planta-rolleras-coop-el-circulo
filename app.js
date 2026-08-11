@@ -217,6 +217,46 @@ const db = {
     return {ok:true, resultado:data};
   },
 
+  // ── Correcciones: cuando la IA lee mal una fecha, un peso o un estado ──
+  async bobinasDeHoja(produccionId) {
+    const {data} = await SB.from("v_bobinas").select("*")
+      .eq("produccion_id",produccionId).order("n_bobina");
+    return data||[];
+  },
+
+  async actualizarHoja(id, campos) {
+    const {error} = await SB.from("producciones").update({
+      fecha: campos.fecha,
+      turno: campos.turno,
+      medida: campos.medida||"",
+      bultos: campos.bultos===""||campos.bultos==null ? null : Number(campos.bultos),
+      observaciones: campos.observaciones||"",
+      maquina_origen: campos.maquinaOrigen||""
+    }).eq("id",id);
+    return error ? {ok:false, detalle:error.message} : {ok:true};
+  },
+
+  async borrarHoja(id) {
+    // Las bobinas y el scrap se borran solos (on delete cascade).
+    const {error} = await SB.from("producciones").delete().eq("id",id);
+    return error ? {ok:false, detalle:error.message} : {ok:true};
+  },
+
+  async actualizarBobina(id, campos) {
+    const {error} = await SB.from("bobinas").update({
+      n_bobina: String(campos.n||"").trim(),
+      peso: campos.peso===""||campos.peso==null ? null : Number(campos.peso),
+      iniciales: (campos.iniciales||"").toUpperCase().trim(),
+      estado: campos.estado||null
+    }).eq("id",id);
+    return error ? {ok:false, detalle:error.message} : {ok:true};
+  },
+
+  async borrarBobina(id) {
+    const {error} = await SB.from("bobinas").delete().eq("id",id);
+    return error ? {ok:false, detalle:error.message} : {ok:true};
+  },
+
   // Estadísticas de producción (hojas de control ya cargadas por foto → Gemini)
   async loadProduccion(desde, hasta) {
     const [b,p] = await Promise.all([

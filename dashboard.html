@@ -727,6 +727,107 @@ function Produccion(){
   </div>);
 }
 
+// ── Corregir una hoja cargada (cuando la IA leyó mal algo) ───────────────────
+function CorregirHoja({hoja,onCerrar,onCambio}){
+  const [f,setF]=useState({
+    fecha:hoja.fecha, turno:hoja.turno, medida:hoja.medida||"",
+    bultos:hoja.bultos??"", observaciones:hoja.observaciones||"",
+    maquinaOrigen:hoja.maquina_origen||""
+  });
+  const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  const [bobinas,setBobinas]=useState(null);
+  const [msg,setMsg]=useState(null);
+  const [guardando,setGuardando]=useState(false);
+
+  const cargarBobinas=async()=>setBobinas(await db.bobinasDeHoja(hoja.id));
+  useEffect(()=>{ cargarBobinas(); },[]);
+
+  const guardarHoja=async()=>{
+    setGuardando(true);
+    const r=await db.actualizarHoja(hoja.id,f);
+    setGuardando(false);
+    if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
+    setMsg({t:"ok",x:"✓ Hoja corregida"}); onCambio();
+  };
+
+  const borrarHoja=async()=>{
+    if(!confirm("¿Borrar toda la hoja? Se borran también sus "+(bobinas?bobinas.length:"")+" bobinas. No se puede deshacer."))return;
+    const r=await db.borrarHoja(hoja.id);
+    if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
+    onCambio(); onCerrar();
+  };
+
+  const guardarBobina=async b=>{
+    const r=await db.actualizarBobina(b.id,{n:b.n_bobina,peso:b.peso,iniciales:b.operario_bobina,estado:b.estado});
+    if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
+    setMsg({t:"ok",x:"✓ Bobina "+b.n_bobina+" corregida"}); onCambio();
+  };
+
+  const borrarBobina=async b=>{
+    if(!confirm("¿Borrar la bobina "+b.n_bobina+"?"))return;
+    const r=await db.borrarBobina(b.id);
+    if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
+    await cargarBobinas(); onCambio();
+  };
+
+  const setBob=(i,k,v)=>setBobinas(prev=>prev.map((b,j)=>j===i?{...b,[k]:v}:b));
+  const celda={...inp,padding:"6px 8px",fontSize:12};
+
+  return(<>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10}}>
+      <Field label="Fecha"><input type="date" style={inp} value={f.fecha} onChange={e=>s("fecha",e.target.value)}/></Field>
+      <Field label="Turno">
+        <div style={{display:"flex",gap:6}}>
+          {[["dia","☀️ Día"],["noche","🌙 Noche"]].map(([id,l])=>(
+            <button key={id} onClick={()=>s("turno",id)} style={{...Btn(f.turno===id?O:"transparent",f.turno===id?D:GR,{flex:1,fontSize:12})}}>{l}</button>))}
+        </div>
+      </Field>
+      <Field label="Medida"><input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)}/></Field>
+      <Field label="Bultos"><input type="number" style={inp} value={f.bultos} onChange={e=>s("bultos",e.target.value)}/></Field>
+      <Field label="Máquina de origen"><input style={inp} value={f.maquinaOrigen} onChange={e=>s("maquinaOrigen",e.target.value)}/></Field>
+    </div>
+    <Field label="Observaciones"><input style={inp} value={f.observaciones} onChange={e=>s("observaciones",e.target.value)}/></Field>
+
+    <div style={{display:"flex",gap:8,marginBottom:16}}>
+      <button onClick={guardarHoja} disabled={guardando} style={{...Btn(O,D,{flex:1,fontSize:12})}}>{guardando?"Guardando...":"Guardar cambios de la hoja"}</button>
+      <button onClick={borrarHoja} style={{...Btn("transparent",RE,{fontSize:12,borderColor:RE+"66"})}}>🗑 Borrar hoja</button>
+    </div>
+
+    <div style={{color:W,fontSize:12,fontWeight:700,marginBottom:8}}>Bobinas</div>
+    {bobinas===null?<p style={{color:GR,fontSize:12}}>Cargando...</p>:
+     bobinas.length===0?<p style={{color:GR,fontSize:12}}>Esta hoja no tiene bobinas.</p>:
+     <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto"}}>
+      {bobinas.map((b,i)=>(<div key={b.id} style={{background:D,borderRadius:8,padding:10,
+           borderLeft:"3px solid "+(b.estado==="MAL"?RE:GN)}}>
+        <div style={{display:"flex",gap:6,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div style={{width:76}}>
+            <div style={{color:GR,fontSize:9,marginBottom:3}}>N°</div>
+            <input style={celda} value={b.n_bobina||""} onChange={e=>setBob(i,"n_bobina",e.target.value)}/>
+          </div>
+          <div style={{width:92}}>
+            <div style={{color:GR,fontSize:9,marginBottom:3}}>PESO</div>
+            <input type="number" style={celda} value={b.peso??""} onChange={e=>setBob(i,"peso",e.target.value)}/>
+          </div>
+          <div style={{width:76}}>
+            <div style={{color:GR,fontSize:9,marginBottom:3}}>INIC.</div>
+            <input style={celda} value={b.operario_bobina||""} onChange={e=>setBob(i,"operario_bobina",e.target.value)}/>
+          </div>
+          <div style={{display:"flex",gap:4}}>
+            {[["BIEN",GN],["MAL",RE]].map(([v,c])=>(
+              <button key={v} onClick={()=>setBob(i,"estado",v)} style={{...Btn(b.estado===v?c:"transparent",b.estado===v?D:GR,{fontSize:10,padding:"7px 9px"})}}>{v}</button>))}
+          </div>
+          <button onClick={()=>guardarBobina(b)} style={{...Btn(O,D,{fontSize:11,padding:"7px 11px"})}}>Guardar</button>
+          <button onClick={()=>borrarBobina(b)} style={{...Btn("transparent",RE,{fontSize:11,padding:"7px 9px",borderColor:RE+"55"})}}>✕</button>
+        </div>
+        {b.defectos&&<div style={{color:O,fontSize:10,marginTop:6}}>Defecto: {b.defectos}</div>}
+      </div>))}
+     </div>}
+
+    {msg&&<div style={{marginTop:12,padding:10,borderRadius:8,fontSize:12,
+        background:(msg.t==="ok"?GN:RE)+"15",color:msg.t==="ok"?GN:RE}}>{msg.x}</div>}
+  </>);
+}
+
 // ── Reportes (semanal / trimestral) ──────────────────────────────────────────
 function Barra({valor,max,color}){
   // Las clases sirven para que las barras sigan viéndose al imprimir en blanco y negro.
@@ -743,6 +844,7 @@ function Reportes(){
   const [producciones,setProducciones]=useState([]);
   const [cargando,setCargando]=useState(true);
   const [buscar,setBuscar]=useState("");
+  const [corrigiendo,setCorrigiendo]=useState(null);
 
   // Los períodos que pidieron: la semana y el trimestre cerrado.
   const aplicar=p=>{
@@ -753,11 +855,13 @@ function Reportes(){
     if(p==="trimestre"){ setDesde(haceDiasIso(90)); setHasta(hoyIso()); }
   };
 
-  useEffect(()=>{ (async()=>{
+  // Se vuelve a consultar al cambiar el período y después de cada corrección.
+  const recargar=async()=>{
     setCargando(true);
     const d=await db.loadProduccion(desde,hasta);
     setBobinas(d.bobinas); setProducciones(d.producciones); setCargando(false);
-  })(); },[desde,hasta]);
+  };
+  useEffect(()=>{ recargar(); },[desde,hasta]);
 
   const kilos=bobinas.reduce((a,b)=>a+(+b.peso||0),0);
   const mal=bobinas.filter(b=>b.estado==="MAL");
@@ -919,7 +1023,37 @@ function Reportes(){
               </div>)}
         </Caja>
       </div>
+
+      <div className="no-imprimir" style={{marginTop:20}}>
+        <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>🛠 Hojas cargadas en el período</h3>
+        <p style={{color:GR,fontSize:11,marginBottom:12,lineHeight:1.5}}>
+          Si la IA leyó mal una fecha, un peso o un BIEN/MAL, corregilo acá.
+          Las hojas con fecha futura salen marcadas porque casi siempre son un error de lectura.
+        </p>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {producciones.map(p=>{
+            const futura = p.fecha > hoyIso();
+            return(<div key={p.id} style={{background:CA,border:"1px solid "+(futura?O:BR),borderRadius:10,
+                 padding:"11px 13px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <div style={{fontSize:12}}>
+                <div style={{color:W,fontWeight:700}}>
+                  {tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}
+                  {futura&&<span style={{color:O,fontWeight:400,marginLeft:8}}>⚠️ fecha futura</span>}
+                </div>
+                <div style={{color:GR,fontSize:11,marginTop:2}}>
+                  {p.medida||"sin medida"} · {p.bobinas} bobinas · {fnum(p.kilos)} kg · {p.bien} bien / {p.mal} mal
+                </div>
+              </div>
+              <button onClick={()=>setCorrigiendo(p)} style={{...Btn("transparent",O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
+            </div>);
+          })}
+        </div>
+      </div>
      </>)}
+
+    {corrigiendo&&<Modal title={"Corregir — "+tituloMaquina(corrigiendo.maquina)+" · "+fdate(corrigiendo.fecha)} onClose={()=>setCorrigiendo(null)}>
+      <CorregirHoja hoja={corrigiendo} onCerrar={()=>setCorrigiendo(null)} onCambio={recargar}/>
+    </Modal>}
   </div>);
 }
 
