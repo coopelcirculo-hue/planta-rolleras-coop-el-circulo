@@ -79,6 +79,10 @@ const changeMyPassword = async newPass => {
   return !error;
 };
 
+// Supabase no da error cuando una política de seguridad bloquea la fila: devuelve
+// cero filas afectadas y listo. Este es el aviso para ese caso.
+const SIN_PERMISO = "No se guardó: la base no permite modificar esta fila. Falta correr el SQL de permisos (8-corregir-desde-la-app.sql) en Supabase.";
+
 // ── Mappers snake_case ↔ camelCase ────────────────────────────────────────────
 const fromEvento = e => ({...e,maquinaId:e.maquina_id,resueltoFecha:e.resuelto_fecha,creadoPor:e.creado_por});
 const fromEstado = e => ({...e,maquinaId:e.maquina_id,creadoPor:e.creado_por});
@@ -224,37 +228,48 @@ const db = {
     return data||[];
   },
 
+  // Ojo: si una política de seguridad bloquea la fila, Supabase no devuelve error,
+  // simplemente no actualiza nada. Por eso se pide de vuelta la fila y se controla
+  // que realmente haya cambiado algo.
   async actualizarHoja(id, campos) {
-    const {error} = await SB.from("producciones").update({
+    const {data,error} = await SB.from("producciones").update({
       fecha: campos.fecha,
       turno: campos.turno,
       medida: campos.medida||"",
       bultos: campos.bultos===""||campos.bultos==null ? null : Number(campos.bultos),
       observaciones: campos.observaciones||"",
       maquina_origen: campos.maquinaOrigen||""
-    }).eq("id",id);
-    return error ? {ok:false, detalle:error.message} : {ok:true};
+    }).eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
   },
 
   async borrarHoja(id) {
     // Las bobinas y el scrap se borran solos (on delete cascade).
-    const {error} = await SB.from("producciones").delete().eq("id",id);
-    return error ? {ok:false, detalle:error.message} : {ok:true};
+    const {data,error} = await SB.from("producciones").delete().eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
   },
 
   async actualizarBobina(id, campos) {
-    const {error} = await SB.from("bobinas").update({
+    const {data,error} = await SB.from("bobinas").update({
       n_bobina: String(campos.n||"").trim(),
       peso: campos.peso===""||campos.peso==null ? null : Number(campos.peso),
       iniciales: (campos.iniciales||"").toUpperCase().trim(),
       estado: campos.estado||null
-    }).eq("id",id);
-    return error ? {ok:false, detalle:error.message} : {ok:true};
+    }).eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
   },
 
   async borrarBobina(id) {
-    const {error} = await SB.from("bobinas").delete().eq("id",id);
-    return error ? {ok:false, detalle:error.message} : {ok:true};
+    const {data,error} = await SB.from("bobinas").delete().eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
   },
 
   // Estadísticas de producción (hojas de control ya cargadas por foto → Gemini)
