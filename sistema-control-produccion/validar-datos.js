@@ -64,20 +64,53 @@ const aFechaISO = v => {
   return null;
 };
 
-// --- fecha (obligatoria) ---
-let fecha = aFechaISO(d.fecha);
+// Cuantos dias hace (negativo = esta en el futuro)
+const diasAtras = iso => (Date.now() - new Date(iso + 'T00:00:00').getTime()) / 86400000;
+
+// La IA lee bien el dia y el mes, pero el anio escrito a mano ("26") lo confunde
+// con 20, 21 o 24. Como las hojas de control son siempre de los ultimos dias, si
+// el anio leido no da una fecha razonable se prueba con el actual y el anterior.
+const corregirAnio = iso => {
+  if (!iso) return { fecha: iso, corregido: false };
+  const partes = iso.split('-');
+  const mes = partes[1], dia = partes[2];
+  const hoy = new Date();
+  if (diasAtras(iso) >= -2 && diasAtras(iso) <= 400) return { fecha: iso, corregido: false };
+  for (const anio of [hoy.getFullYear(), hoy.getFullYear() - 1]) {
+    const prueba = anio + '-' + mes + '-' + dia;
+    if (isNaN(new Date(prueba + 'T00:00:00').getTime())) continue;
+    const dias = diasAtras(prueba);
+    if (dias >= -2 && dias <= 150) return { fecha: prueba, corregido: true, antes: iso };
+  }
+  return { fecha: iso, corregido: false };
+};
+
+// --- fecha ---
+// Si la persona la forzo desde la app (letra ilegible), esa manda.
+let fecha = aFechaISO(prep.fecha_forzada) || null;
+if (fecha) {
+  adv.push('Fecha puesta a mano desde la app: ' + fecha);
+} else {
+  fecha = aFechaISO(d.fecha);
+  if (fecha) {
+    const r = corregirAnio(fecha);
+    if (r.corregido) {
+      adv.push('El anio leido (' + r.antes + ') no era posible: se corrigio a ' + r.fecha + '. Verificar.');
+      fecha = r.fecha;
+    }
+  }
+}
 if (!fecha || isNaN(new Date(fecha + 'T00:00:00').getTime())) {
-  errores.push('Fecha faltante o ilegible: revisar la hoja');
+  errores.push('Fecha faltante o ilegible: revisar la hoja, o ponerla a mano al subirla');
   fecha = null;
 } else {
-  const f = new Date(fecha + 'T00:00:00');
-  const dias = (Date.now() - f.getTime()) / 86400000;
+  const dias = diasAtras(fecha);
   if (dias < -1) adv.push('La fecha es futura (' + fecha + '): verificar');
   if (dias > 60) adv.push('La fecha tiene mas de 60 dias (' + fecha + '): verificar');
 }
 
 // --- turno ---
-let turno = String(d.turno || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+let turno = String(prep.turno_forzado || d.turno || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 if (turno.startsWith('dia')) turno = 'dia';
 else if (turno.startsWith('noche')) turno = 'noche';
 else {

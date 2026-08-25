@@ -160,13 +160,16 @@ const db = {
     return (data||[]).map(fromEstado);
   },
 
-  // Manda la foto al formulario de n8n (campos: field-0 la foto, field-1 máquina,
-  // field-2 planta). n8n la lee con Gemini y la guarda en Supabase.
-  async subirFoto(archivo, maquina) {
+  // Manda la foto al formulario de n8n (campos: field-0 la foto, field-1 rollera,
+  // field-2 planta, field-3 fecha). n8n la lee con Gemini y la guarda en Supabase.
+  // La fecha la pone la persona: es el dato que más se equivoca la IA al leerlo
+  // a mano, y quien saca la foto sabe de qué día es la hoja.
+  async subirFoto(archivo, maquina, fecha) {
     const fd = new FormData();
     fd.append("field-0", archivo, archivo.name || "hoja.jpg");
     fd.append("field-1", maquina || "");
     fd.append("field-2", "Rolleras");
+    fd.append("field-3", fecha || "");
     try {
       const r = await fetch(N8N_FORM_URL, { method:"POST", body: fd });
       if(!r.ok) return {ok:false, detalle:"n8n respondió "+r.status+". ¿El workflow está activo?"};

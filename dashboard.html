@@ -411,6 +411,10 @@ function Monitoreo({perfil}){
 function SubirFoto({maquinas,onListo}){
   const [archivo,setArchivo]=useState(null);
   const [maquina,setMaquina]=useState("");
+  // Normalmente la fecha y el turno los lee la IA de la hoja. Estos campos son
+  // solo para forzarlos cuando la letra está tan mal que no hay forma.
+  const [fecha,setFecha]=useState("");
+  const [turno,setTurno]=useState("");
   const [estado,setEstado]=useState(null); // {tipo, texto}
   // Dos inputs: uno abre la cámara (solo celular/tablet), el otro el explorador.
   const refCamara=useRef(null);
@@ -423,7 +427,7 @@ function SubirFoto({maquinas,onListo}){
     setEstado({tipo:"proceso",texto:"Subiendo la foto..."});
     const antes=await db.contarPartes();
 
-    const r=await db.subirFoto(archivo,maquina);
+    const r=await db.subirFoto(archivo,maquina,fecha,turno);
     if(!r.ok){ setEstado({tipo:"error",texto:r.detalle}); return; }
 
     // n8n tarda ~20s en leer la hoja con IA: esperamos hasta que aparezca el parte.
@@ -473,6 +477,28 @@ function SubirFoto({maquinas,onListo}){
         </select>
       </div>
     </div>
+
+    <details style={{marginBottom:12}}>
+      <summary style={{color:GR,fontSize:11,cursor:"pointer"}}>
+        ¿La letra está muy fea? Forzar fecha y turno a mano
+      </summary>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginTop:10}}>
+        <div>
+          <div style={{color:GR,fontSize:10,letterSpacing:1,marginBottom:5}}>FECHA</div>
+          <input type="date" style={inp} value={fecha} onChange={e=>setFecha(e.target.value)}/>
+        </div>
+        <div>
+          <div style={{color:GR,fontSize:10,letterSpacing:1,marginBottom:5}}>TURNO</div>
+          <div style={{display:"flex",gap:6}}>
+            {[["","IA"],["dia","☀️ Día"],["noche","🌙 Noche"]].map(([id,lbl])=>(
+              <button key={id} onClick={()=>setTurno(id)} style={{...Btn(turno===id?O:"transparent",turno===id?D:GR,{flex:1,fontSize:11,padding:"10px 4px"})}}>{lbl}</button>))}
+          </div>
+        </div>
+      </div>
+      <div style={{color:GR,fontSize:10,marginTop:8,lineHeight:1.5}}>
+        Si los dejás vacíos, los lee de la hoja.
+      </div>
+    </details>
 
     {archivo&&<div style={{color:GR,fontSize:11,marginBottom:10}}>
       📎 {archivo.name} · {Math.round(archivo.size/1024)} KB
