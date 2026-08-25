@@ -1051,17 +1051,29 @@ function Reportes(){
       </div>
 
       <div className="no-imprimir" style={{marginTop:20}}>
-        <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>🛠 Hojas cargadas en el período</h3>
-        <p style={{color:GR,fontSize:11,marginBottom:12,lineHeight:1.5}}>
-          Si la IA leyó mal una fecha, un peso o un BIEN/MAL, corregilo acá.
-          Las hojas con fecha futura salen marcadas porque casi siempre son un error de lectura.
-        </p>
+        {(()=>{
+          const pendientes=producciones.filter(p=>(p.observaciones||"").includes("⚠ REVISAR:")||p.fecha>hoyIso()).length;
+          return(<>
+            <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>
+              🛠 Hojas cargadas en el período
+              {pendientes>0&&<span style={{color:O,fontWeight:400,marginLeft:8}}>· {pendientes} para revisar</span>}
+            </h3>
+            <p style={{color:GR,fontSize:11,marginBottom:12,lineHeight:1.5}}>
+              Ninguna hoja se descarta: si la IA no pudo leer algo, se guarda igual con
+              los pesos y queda marcada en naranja con el motivo. Corregila acá cuando puedas.
+            </p>
+          </>);
+        })()}
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {producciones.map(p=>{
             const futura = p.fecha > hoyIso();
-            return(<div key={p.id} style={{background:CA,border:"1px solid "+(futura?O:BR),borderRadius:10,
+            // La IA deja escrito en observaciones lo que no pudo leer.
+            const aviso = (p.observaciones||"").includes("⚠ REVISAR:")
+              ? p.observaciones.split("⚠ REVISAR:")[1].trim() : "";
+            const marcada = futura || aviso;
+            return(<div key={p.id} style={{background:CA,border:"1px solid "+(marcada?O:BR),borderRadius:10,
                  padding:"11px 13px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <div style={{fontSize:12}}>
+              <div style={{fontSize:12,flex:1,minWidth:200}}>
                 <div style={{color:W,fontWeight:700}}>
                   {tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}
                   {futura&&<span style={{color:O,fontWeight:400,marginLeft:8}}>⚠️ fecha futura</span>}
@@ -1069,8 +1081,9 @@ function Reportes(){
                 <div style={{color:GR,fontSize:11,marginTop:2}}>
                   {p.medida||"sin medida"} · {p.bobinas} bobinas · {fnum(p.kilos)} kg · {p.bien} bien / {p.mal} mal
                 </div>
+                {aviso&&<div style={{color:O,fontSize:11,marginTop:4,lineHeight:1.5}}>⚠️ {aviso}</div>}
               </div>
-              <button onClick={()=>setCorrigiendo(p)} style={{...Btn("transparent",O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
+              <button onClick={()=>setCorrigiendo(p)} style={{...Btn(marcada?O:"transparent",marcada?D:O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
             </div>);
           })}
         </div>

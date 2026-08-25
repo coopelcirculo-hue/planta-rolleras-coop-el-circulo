@@ -100,9 +100,13 @@ if (fecha) {
     }
   }
 }
+// Si no se pudo leer, NO se descarta la hoja: se guarda con la fecha de hoy y se
+// marca para revisar. Es preferible tener los pesos con la fecha a corregir que
+// perder la hoja entera.
 if (!fecha || isNaN(new Date(fecha + 'T00:00:00').getTime())) {
-  errores.push('Fecha faltante o ilegible: revisar la hoja, o ponerla a mano al subirla');
-  fecha = null;
+  const h = new Date();
+  fecha = h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
+  adv.push('FECHA NO LEIDA: se guardo con la fecha de hoy (' + fecha + '). Corregirla en la app.');
 } else {
   const dias = diasAtras(fecha);
   if (dias < -1) adv.push('La fecha es futura (' + fecha + '): verificar');
@@ -125,8 +129,12 @@ if (!operario) adv.push('Operario faltante o ilegible');
 // --- rollera y maquina de origen ---
 // La ROLLERA la elige la persona al subir la hoja. La maquina que figura escrita
 // en la hoja es la que fabrico la bobina, y se guarda solo como trazabilidad.
+// Si no vino la rollera se guarda igual, bajo "S/D", para no perder los pesos.
 let rollera = String(prep.maquina_hint || '').trim();
-if (!rollera) errores.push('Falta indicar en que rollera se corto: elegila al subir la hoja');
+if (!rollera) {
+  rollera = 'S/D';
+  adv.push('ROLLERA NO INDICADA: se guardo como S/D. Corregirla en la app.');
+}
 
 let maquina_origen = (d.maquina && !esIlegible(d.maquina)) ? String(d.maquina).trim() : '';
 if (!maquina_origen) adv.push('Maquina de origen de la bobina faltante o ilegible');
@@ -183,6 +191,14 @@ const sr = aNumero(d.scrap_rollo);
 if (isNaN(se)) adv.push('Scrap de empalme faltante o ilegible (se guarda 0)');
 if (isNaN(sr)) adv.push('Scrap de rollo faltante o ilegible (se guarda 0)');
 
+// Lo que la IA no pudo leer queda escrito en la propia hoja, para que se vea en
+// la app y se sepa que hay que revisar (y que fue lo que fallo).
+const obsHoja = (d.observaciones && !esIlegible(d.observaciones)) ? String(d.observaciones).trim() : '';
+const aRevisar = adv.filter(a => /NO LEIDA|NO INDICADA|se corrigio|futura|mas de 60 dias|ilegible|sin marcar/i.test(a));
+const observaciones = aRevisar.length
+  ? (obsHoja ? obsHoja + ' | ' : '') + '⚠ REVISAR: ' + aRevisar.join(' | ')
+  : obsHoja;
+
 const datos = {
   empresa: 'Coop El Circulo',
   planta: prep.planta || 'Rolleras',
@@ -192,7 +208,7 @@ const datos = {
   medida: (d.medida && !esIlegible(d.medida)) ? String(d.medida) : '',
   filas: aNumero(d.filas) || null,
   bultos: aNumero(d.bultos) || null,
-  observaciones: (d.observaciones && !esIlegible(d.observaciones)) ? String(d.observaciones) : '',
+  observaciones,
   origen: prep.origen
 };
 
