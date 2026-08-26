@@ -425,7 +425,7 @@ function SubirFoto({maquinas,onListo}){
   const enviar=async()=>{
     if(!archivo) return;
     setEstado({tipo:"proceso",texto:"Subiendo la foto..."});
-    const antes=await db.contarPartes();
+    const antes=await db.idsDePartes();
 
     const r=await db.subirFoto(archivo,maquina,fecha,turno);
     if(!r.ok){ setEstado({tipo:"error",texto:r.detalle}); return; }
@@ -434,11 +434,15 @@ function SubirFoto({maquinas,onListo}){
     setEstado({tipo:"proceso",texto:"Leyendo la hoja con IA... (puede tardar medio minuto)"});
     for(let i=0;i<20;i++){
       await new Promise(res=>setTimeout(res,3000));
-      const ahora=await db.contarPartes();
-      if(ahora>antes){
-        const p=await db.ultimoParte();
-        setEstado({tipo:"ok",texto:"✓ Hoja cargada: "+tituloMaquina(p.maquina)+" · "+fdate(p.fecha)+
-          " · "+p.bobinas+" bobinas · "+fnum(p.kilos)+" kg"});
+      const ahora=await db.idsDePartes();
+      const nuevo=[...ahora].find(id=>!antes.has(id));
+      if(nuevo){
+        const p=await db.parteporId(nuevo);
+        const revisar=(p.observaciones||"").includes("⚠ REVISAR:");
+        setEstado({tipo:revisar?"aviso":"ok",
+          texto:(revisar?"⚠️ Cargada, pero revisala: ":"✓ Hoja cargada: ")+
+            tituloMaquina(p.maquina)+" · "+fdate(p.fecha)+" · "+p.bobinas+" bobinas · "+fnum(p.kilos)+" kg"+
+            (revisar?"\n"+p.observaciones.split("⚠ REVISAR:")[1].trim():"")});
         setArchivo(null); if(refInput.current) refInput.current.value="";
         if(onListo) onListo();
         return;
@@ -451,6 +455,8 @@ function SubirFoto({maquinas,onListo}){
 
   const procesando = estado?.tipo==="proceso";
   const colorEstado = estado?.tipo==="ok"?GN : estado?.tipo==="error"?RE : O;
+  // El mensaje puede traer el motivo de revisión en una segunda línea.
+  const lineas = (estado?.texto||"").split("\n");
 
   return(<div style={{background:CA,border:"1px solid "+O+"55",borderRadius:12,padding:16,marginBottom:20}}>
     <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>📷 Subir foto de la hoja</h3>
@@ -514,7 +520,8 @@ function SubirFoto({maquinas,onListo}){
 
     {estado&&<div style={{marginTop:12,padding:11,borderRadius:8,fontSize:12,lineHeight:1.6,
         background:colorEstado+"15",color:colorEstado}}>
-      {estado.texto}
+      <div style={{fontWeight:estado.tipo==="aviso"?700:400}}>{lineas[0]}</div>
+      {lineas[1]&&<div style={{marginTop:4,fontWeight:400}}>{lineas[1]}</div>}
     </div>}
   </div>);
 }

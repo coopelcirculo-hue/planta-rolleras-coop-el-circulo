@@ -179,17 +179,16 @@ const db = {
     }
   },
 
-  // Cuántos partes hay cargados: sirve para detectar cuándo entró la foto nueva.
-  async contarPartes() {
-    const {count} = await SB.from("v_producciones")
-      .select("*",{count:"exact",head:true}).eq("empresa",EMPRESA);
-    return count || 0;
+  // Los id de las hojas que hay ahora. Comparando la lista antes y después de
+  // subir se identifica exactamente cuál es la nueva. (Antes se tomaba "la de
+  // fecha más alta", y con una hoja mal fechada en el futuro siempre ganaba esa.)
+  async idsDePartes() {
+    const {data} = await SB.from("v_producciones").select("id").eq("empresa",EMPRESA);
+    return new Set((data||[]).map(p=>p.id));
   },
 
-  // El último parte cargado, para mostrar qué leyó la IA.
-  async ultimoParte() {
-    const {data} = await SB.from("v_producciones").select("*")
-      .eq("empresa",EMPRESA).order("fecha",{ascending:false}).limit(1);
+  async parteporId(id) {
+    const {data} = await SB.from("v_producciones").select("*").eq("id",id).limit(1);
     return (data||[])[0] || null;
   },
 

@@ -8,8 +8,12 @@ INSTRUCCIONES:
 3. Si no logras leer un valor, devuelve "ILEGIBLE"
 4. No inventes datos
 5. La fecha en formato dd/mm/aaaa (el dia va primero, como se escribe en Argentina)
-6. Pesos y scrap: numeros enteros en kilos, sin puntos ni comas de miles
+6. Pesos y scrap: SIEMPRE entre comillas, como texto, y solo digitos. Si en la
+   hoja dice 47.500 devolve "47500". NUNCA lo mandes como numero sin comillas:
+   el punto se interpretaria como decimal y se perderian los miles.
 7. El scrap esta al pie de la hoja, en dos casilleros separados: empalme y rollo
+8. Una bobina pesa decenas de miles de kilos (entre 10000 y 100000). Si te da un
+   numero mucho mas chico, volve a mirar: te faltan los miles.
 
 DEVUELVE SOLO JSON valido (sin backticks ni explicaciones):
 

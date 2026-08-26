@@ -45,6 +45,16 @@ const aNumero = v => {
   return s === '' ? NaN : Number(s);
 };
 
+// Si la IA manda el peso como NUMERO en vez de texto ("peso": 44.000 sin comillas),
+// el JSON lo lee como 44,5 y se pierden los miles. Como sabemos el orden de
+// magnitud real, se recupera multiplicando, y se avisa para que lo revisen.
+const recuperarMiles = (n, minimoEsperado) => {
+  if (isNaN(n) || n <= 0 || n >= minimoEsperado) return { valor: n, recuperado: false };
+  let v = n;
+  while (v < minimoEsperado) v *= 1000;
+  return { valor: Math.round(v), recuperado: true, antes: n };
+};
+
 // Acepta "2026-08-11" y tambien "11/8/26" o "11-08-2026" (dia/mes/anio, como se
 // escribe en Argentina). Nunca interpreta el primer numero como mes.
 const aFechaISO = v => {
@@ -151,7 +161,12 @@ for (const b of (Array.isArray(filas) ? filas : [])) {
   n = esIlegible(n) ? '' : String(n).replace(/\s+/g, '').trim();
   if (!n) { adv.push('Una bobina no tiene numero legible: se omitio'); continue; }
 
-  const peso = aNumero(b.peso);
+  let peso = aNumero(b.peso);
+  const recP = recuperarMiles(peso, 10000);
+  if (recP.recuperado) {
+    peso = recP.valor;
+    adv.push('Bobina ' + n + ': el peso vino como ' + recP.antes + ', se interpreto ' + peso + ' kg. VERIFICAR.');
+  }
   if (isNaN(peso)) {
     adv.push('Bobina ' + n + ': peso faltante o ilegible');
   } else if (peso < 10000 || peso > 100000) {
@@ -186,15 +201,20 @@ for (const b of (Array.isArray(filas) ? filas : [])) {
 if (bobinas.length === 0) errores.push('No se pudo leer ninguna bobina de la hoja');
 
 // --- scrap ---
-const se = aNumero(d.scrap_empalme);
-const sr = aNumero(d.scrap_rollo);
+// Mismo problema de los miles: un scrap de "1.000" puede llegar como 1.
+let se = aNumero(d.scrap_empalme);
+let sr = aNumero(d.scrap_rollo);
+const recSE = recuperarMiles(se, 100);
+if (recSE.recuperado) { se = recSE.valor; adv.push('Scrap de empalme vino como ' + recSE.antes + ', se interpreto ' + se + ' kg. VERIFICAR.'); }
+const recSR = recuperarMiles(sr, 100);
+if (recSR.recuperado) { sr = recSR.valor; adv.push('Scrap de rollo vino como ' + recSR.antes + ', se interpreto ' + sr + ' kg. VERIFICAR.'); }
 if (isNaN(se)) adv.push('Scrap de empalme faltante o ilegible (se guarda 0)');
 if (isNaN(sr)) adv.push('Scrap de rollo faltante o ilegible (se guarda 0)');
 
 // Lo que la IA no pudo leer queda escrito en la propia hoja, para que se vea en
 // la app y se sepa que hay que revisar (y que fue lo que fallo).
 const obsHoja = (d.observaciones && !esIlegible(d.observaciones)) ? String(d.observaciones).trim() : '';
-const aRevisar = adv.filter(a => /NO LEIDA|NO INDICADA|se corrigio|futura|mas de 60 dias|ilegible|sin marcar/i.test(a));
+const aRevisar = adv.filter(a => /NO LEIDA|NO INDICADA|se corrigio|futura|mas de 60 dias|ilegible|sin marcar|VERIFICAR/i.test(a));
 const observaciones = aRevisar.length
   ? (obsHoja ? obsHoja + ' | ' : '') + '⚠ REVISAR: ' + aRevisar.join(' | ')
   : obsHoja;
