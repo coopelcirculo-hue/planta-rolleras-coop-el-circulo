@@ -407,6 +407,64 @@ function Monitoreo({perfil}){
   </div>);
 }
 
+// ── Resultado de una carga, en palabras ──────────────────────────────────────
+// "ya_cargada" es lo que antes se veía como "no apareció ningún parte": la foto
+// era de una hoja que ya estaba, y por eso no hay que volver a subirla.
+function mensajeCarga(d){
+  const h=d.hoja;
+  const desc=h?tituloMaquina(h.maquina)+" · "+fdate(h.fecha)+" · "+h.turno+" · "+h.bobinas+" bobinas · "+fnum(h.kilos)+" kg":"";
+  if(d.resultado==="fallida")
+    return {tipo:"error",texto:"✗ No se pudo leer la hoja: "+(d.motivo||"error desconocido")+
+      "\nProbá sacar la foto de nuevo, derecha y con buena luz, o cargala a mano acá abajo."};
+  if(d.resultado==="ya_cargada")
+    return {tipo:"info",texto:"ℹ️ Esta hoja ya estaba cargada, no se agregó nada: "+desc+
+      ((d.advertencias||[]).length?"\n"+d.advertencias.join(" | "):"")};
+  const obs=h?.observaciones||"";
+  const revisar=obs.includes("⚠ REVISAR:");
+  return {tipo:revisar?"aviso":"ok",
+    texto:(revisar?"⚠️ Cargada, pero revisala: ":"✓ Hoja cargada: ")+desc+(revisar?"\n"+obs.split("⚠ REVISAR:")[1].trim():"")};
+}
+
+// ── Últimas cargas: qué pasó con cada foto subida ────────────────────────────
+function UltimasCargas({version}){
+  const [lista,setLista]=useState(null);
+  useEffect(()=>{
+    let vivo=true;
+    (async()=>{ const l=await db.cargasRecientes(12); if(vivo) setLista(l); })();
+    return ()=>{ vivo=false; };
+  },[version]);
+  if(!lista||lista.length===0) return null;
+
+  const TIPOS={
+    nueva:["✓",GN,"Cargada"],
+    nueva_mismo_turno:["⚠️",O,"Cargada · hay otra hoja del mismo turno con otro operario"],
+    ya_cargada:["ℹ️",BL,"Ya estaba cargada"],
+    fallida:["✗",RE,"No se pudo leer"],
+    sumada:["⚠️",O,"Se sumó a otra hoja (sistema anterior)"],
+  };
+  return(<div style={{marginTop:16,borderTop:"1px solid "+BR,paddingTop:12}}>
+    <div style={{color:GR,fontSize:10,letterSpacing:1,marginBottom:8}}>ÚLTIMAS CARGAS</div>
+    {lista.map((c,i)=>{
+      const r=c.resultado||((c.advertencias||[]).some(a=>String(a).startsWith("Ya existia"))?"sumada":"nueva");
+      const [icono,color,etiqueta]=TIPOS[r]||["•",GR,r];
+      const h=c.hoja;
+      return(<div key={i} style={{display:"flex",gap:8,fontSize:11,padding:"7px 0",lineHeight:1.5,
+          borderBottom:i<lista.length-1?"1px solid "+BR+"66":"none"}}>
+        <span style={{color,width:18,flexShrink:0}}>{icono}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{color:W}}>
+            <span style={{color,fontWeight:700}}>{etiqueta}</span>
+            {h?" · "+tituloMaquina(h.maquina)+" · "+fdate(h.fecha)+" · "+h.turno+" · "+h.bobinas+" bob. · "+fnum(h.kilos)+" kg"
+              :(c.rollera?" · "+tituloMaquina(c.rollera):"")}
+          </div>
+          {r==="fallida"&&c.motivo&&<div style={{color:GR}}>{c.motivo}</div>}
+        </div>
+        <span style={{color:GR,whiteSpace:"nowrap",flexShrink:0}}>{fhora(c.momento)}</span>
+      </div>);
+    })}
+  </div>);
+}
+
 // ── Subir la foto de la hoja (la procesa n8n con IA) ─────────────────────────
 function SubirFoto({maquinas,onListo}){
   const [archivo,setArchivo]=useState(null);
@@ -422,39 +480,48 @@ function SubirFoto({maquinas,onListo}){
 
   const elegir=e=>{ const f=e.target.files?.[0]; if(f){ setArchivo(f); setEstado(null); } };
 
+  // Cambia cada vez que termina una carga, para refrescar "Últimas cargas".
+  const [version,setVersion]=useState(0);
+
   const enviar=async()=>{
     if(!archivo) return;
     setEstado({tipo:"proceso",texto:"Subiendo la foto..."});
+    // Código único de esta foto: con él se pregunta después qué pasó con ELLA,
+    // en vez de adivinar mirando si apareció alguna hoja nueva.
+    const cargaId="c"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
     const antes=await db.idsDePartes();
 
-    const r=await db.subirFoto(archivo,maquina,fecha,turno);
+    const r=await db.subirFoto(archivo,maquina,fecha,turno,cargaId);
     if(!r.ok){ setEstado({tipo:"error",texto:r.detalle}); return; }
 
-    // n8n tarda ~20s en leer la hoja con IA: esperamos hasta que aparezca el parte.
-    setEstado({tipo:"proceso",texto:"Leyendo la hoja con IA... (puede tardar medio minuto)"});
-    for(let i=0;i<20;i++){
-      await new Promise(res=>setTimeout(res,3000));
-      const ahora=await db.idsDePartes();
-      const nuevo=[...ahora].find(id=>!antes.has(id));
-      if(nuevo){
-        const p=await db.parteporId(nuevo);
-        const revisar=(p.observaciones||"").includes("⚠ REVISAR:");
-        setEstado({tipo:revisar?"aviso":"ok",
-          texto:(revisar?"⚠️ Cargada, pero revisala: ":"✓ Hoja cargada: ")+
-            tituloMaquina(p.maquina)+" · "+fdate(p.fecha)+" · "+p.bobinas+" bobinas · "+fnum(p.kilos)+" kg"+
-            (revisar?"\n"+p.observaciones.split("⚠ REVISAR:")[1].trim():"")});
-        setArchivo(null); if(refInput.current) refInput.current.value="";
+    setEstado({tipo:"proceso",texto:"Leyendo la hoja con IA... Si la IA está saturada puede tardar un par de minutos. No la vuelvas a subir."});
+    const terminar=(msg,limpiar)=>{
+      setEstado(msg);
+      setVersion(v=>v+1);
+      if(limpiar){
+        setArchivo(null); setFecha(""); setTurno("");
+        if(refInput.current) refInput.current.value="";
+        if(refCamara.current) refCamara.current.value="";
         if(onListo) onListo();
-        return;
       }
+    };
+    for(let i=0;i<60;i++){   // hasta 4 minutos
+      await new Promise(res=>setTimeout(res,4000));
+      const e=await db.estadoCarga(cargaId);
+      if(e.sinSoporte){
+        // La base todavía no registra las cargas: se usa el método anterior.
+        const ahora=await db.idsDePartes();
+        const nuevo=[...ahora].find(id=>!antes.has(id));
+        if(nuevo){ const p=await db.parteporId(nuevo); terminar(mensajeCarga({resultado:"nueva",hoja:p}),true); return; }
+        continue;
+      }
+      if(e.dato){ terminar(mensajeCarga(e.dato), e.dato.resultado!=="fallida"); return; }
     }
-    setEstado({tipo:"error",texto:"La foto se subió pero no apareció ningún parte nuevo. "+
-      "Puede que la IA no haya podido leer la hoja, o que el parte ya estuviera cargado. "+
-      "Revisá las ejecuciones en n8n, o cargala a mano acá abajo."});
+    terminar({tipo:"aviso",texto:"Sigue procesando. NO la vuelvas a subir: el resultado va a aparecer en \"Últimas cargas\" en unos minutos."},false);
   };
 
   const procesando = estado?.tipo==="proceso";
-  const colorEstado = estado?.tipo==="ok"?GN : estado?.tipo==="error"?RE : O;
+  const colorEstado = estado?.tipo==="ok"?GN : estado?.tipo==="error"?RE : estado?.tipo==="info"?BL : O;
   // El mensaje puede traer el motivo de revisión en una segunda línea.
   const lineas = (estado?.texto||"").split("\n");
 
@@ -523,6 +590,8 @@ function SubirFoto({maquinas,onListo}){
       <div style={{fontWeight:estado.tipo==="aviso"?700:400}}>{lineas[0]}</div>
       {lineas[1]&&<div style={{marginTop:4,fontWeight:400}}>{lineas[1]}</div>}
     </div>}
+
+    <UltimasCargas version={version}/>
   </div>);
 }
 
@@ -1160,41 +1229,45 @@ function Reportes(){
 
       <div className="no-imprimir" style={{marginTop:20}}>
         {(()=>{
-          const pendientes=producciones.filter(p=>(p.observaciones||"").includes("⚠ REVISAR:")||p.fecha>hoyIso()).length;
+          // Los problemas se calculan con los datos reales de cada hoja: al
+          // corregirla, la marca desaparece sola.
+          const porHoja={};
+          todasBobinas.forEach(b=>(porHoja[b.produccion_id]=porHoja[b.produccion_id]||[]).push(b));
+          const hojas=producciones.map(p=>({p,problemas:problemasHoja(p,porHoja[p.id])}))
+            .sort((a,b)=>(b.problemas.length>0)-(a.problemas.length>0));
+          const pendientes=hojas.filter(h=>h.problemas.length).length;
           return(<>
             <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>
               🛠 Hojas cargadas en el período
               {pendientes>0&&<span style={{color:O,fontWeight:400,marginLeft:8}}>· {pendientes} para revisar</span>}
             </h3>
             <p style={{color:GR,fontSize:11,marginBottom:12,lineHeight:1.5}}>
-              Ninguna hoja se descarta: si la IA no pudo leer algo, se guarda igual con
-              los pesos y queda marcada en naranja con el motivo. Corregila acá cuando puedas.
+              Ninguna hoja se descarta: si algo no es normal, la hoja se guarda igual y
+              queda arriba en naranja con el motivo. Corregila y la marca se va sola.
             </p>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {hojas.map(({p,problemas})=>{
+                const marcada=problemas.length>0;
+                return(<div key={p.id} style={{background:CA,border:"1px solid "+(marcada?O:BR),borderRadius:10,
+                     padding:"11px 13px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div style={{fontSize:12,flex:1,minWidth:200}}>
+                    <div style={{color:W,fontWeight:700}}>
+                      {tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}
+                      {p.operario&&<span style={{color:GR,fontWeight:400}}> · {p.operario}</span>}
+                    </div>
+                    <div style={{color:GR,fontSize:11,marginTop:2}}>
+                      {p.medida||"sin medida"} · {p.bobinas} bobinas · {fnum(p.kilos)} kg · {p.bien} bien / {p.mal} mal
+                    </div>
+                    {problemas.map((t,i)=>(
+                      <div key={i} style={{color:O,fontSize:11,marginTop:4,lineHeight:1.5}}>⚠️ {t}</div>
+                    ))}
+                  </div>
+                  <button onClick={()=>setCorrigiendo(p)} style={{...Btn(marcada?O:"transparent",marcada?D:O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
+                </div>);
+              })}
+            </div>
           </>);
         })()}
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {producciones.map(p=>{
-            const futura = p.fecha > hoyIso();
-            // La IA deja escrito en observaciones lo que no pudo leer.
-            const aviso = (p.observaciones||"").includes("⚠ REVISAR:")
-              ? p.observaciones.split("⚠ REVISAR:")[1].trim() : "";
-            const marcada = futura || aviso;
-            return(<div key={p.id} style={{background:CA,border:"1px solid "+(marcada?O:BR),borderRadius:10,
-                 padding:"11px 13px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <div style={{fontSize:12,flex:1,minWidth:200}}>
-                <div style={{color:W,fontWeight:700}}>
-                  {tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}
-                  {futura&&<span style={{color:O,fontWeight:400,marginLeft:8}}>⚠️ fecha futura</span>}
-                </div>
-                <div style={{color:GR,fontSize:11,marginTop:2}}>
-                  {p.medida||"sin medida"} · {p.bobinas} bobinas · {fnum(p.kilos)} kg · {p.bien} bien / {p.mal} mal
-                </div>
-                {aviso&&<div style={{color:O,fontSize:11,marginTop:4,lineHeight:1.5}}>⚠️ {aviso}</div>}
-              </div>
-              <button onClick={()=>setCorrigiendo(p)} style={{...Btn(marcada?O:"transparent",marcada?D:O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
-            </div>);
-          })}
-        </div>
       </div>
      </>)}
 

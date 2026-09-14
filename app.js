@@ -160,16 +160,18 @@ const db = {
     return (data||[]).map(fromEstado);
   },
 
-  // Manda la foto al formulario de n8n (campos: field-0 la foto, field-1 rollera,
-  // field-2 planta, field-3 fecha). n8n la lee con Gemini y la guarda en Supabase.
-  // La fecha la pone la persona: es el dato que más se equivoca la IA al leerlo
-  // a mano, y quien saca la foto sabe de qué día es la hoja.
-  async subirFoto(archivo, maquina, fecha) {
+  // Manda la foto al formulario de n8n. Campos, en el orden del formulario:
+  // field-0 la foto, field-1 rollera, field-2 planta, field-3 fecha y field-4 turno
+  // (solo si se forzaron a mano), field-5 el código de esta carga.
+  // Con ese código la app después pregunta qué pasó con ESTA foto.
+  async subirFoto(archivo, maquina, fecha, turno, cargaId) {
     const fd = new FormData();
     fd.append("field-0", archivo, archivo.name || "hoja.jpg");
     fd.append("field-1", maquina || "");
     fd.append("field-2", "Rolleras");
     fd.append("field-3", fecha || "");
+    fd.append("field-4", turno || "");
+    fd.append("field-5", cargaId || "");
     try {
       const r = await fetch(N8N_FORM_URL, { method:"POST", body: fd });
       if(!r.ok) return {ok:false, detalle:"n8n respondió "+r.status+". ¿El workflow está activo?"};
@@ -177,6 +179,20 @@ const db = {
     } catch(e) {
       return {ok:false, detalle:"No se pudo conectar con n8n: "+e.message};
     }
+  },
+
+  // Qué pasó con una carga: nueva, ya_cargada, nueva_mismo_turno o fallida.
+  // Si la base todavía no tiene la función (falta el SQL 13) devuelve sinSoporte.
+  async estadoCarga(cargaId) {
+    const {data,error} = await SB.rpc("estado_carga",{_carga_id:cargaId});
+    if(error) return {sinSoporte:true};
+    return {dato:data||null};
+  },
+
+  async cargasRecientes(limite) {
+    const {data,error} = await SB.rpc("cargas_recientes",{_limite:limite||15});
+    if(error) return null;
+    return data||[];
   },
 
   // Los id de las hojas que hay ahora. Comparando la lista antes y después de
@@ -321,6 +337,35 @@ const tituloMaquina = codigo => {
   if(!c) return "Máquina";
   if(/^\d+$/.test(c)) return "Rollera "+c;
   return c.charAt(0).toUpperCase()+c.slice(1);
+};
+
+// ── Hojas para revisar ───────────────────────────────────────────────────────
+// Se calcula en el momento con los datos reales: cuando se corrige, la marca
+// desaparece sola. Rangos tomados de lo que es normal en la planta (mediana 10
+// bobinas y ~480.000 kg por hoja; bobinas de 40.000 a 57.000 kg).
+const normBobina = n => String(n||"").toUpperCase().replace(/[^0-9A-Z]/g,"");
+const problemasHoja = (p, bobinasDeLaHoja) => {
+  const out = [];
+  const bs = bobinasDeLaHoja || [];
+  if (p.fecha > hoyIso()) out.push("Fecha futura ("+fdate(p.fecha)+")");
+  else if (p.fecha < haceDiasIso(60)) out.push("Fecha de hace más de 2 meses ("+fdate(p.fecha)+")");
+  if (bs.length > 20) out.push("Tiene "+bs.length+" bobinas, el doble de lo normal: puede haber otra hoja mezclada o la misma foto cargada más de una vez");
+  else if ((+p.kilos||0) > 1000000) out.push(fnum(p.kilos)+" kg en un turno es mucho más de lo normal");
+  const raros = bs.filter(b => b.peso!=null && (+b.peso < 20000 || +b.peso > 80000));
+  if (raros.length) out.push("Peso raro en "+raros.map(b=>"bobina "+b.n_bobina+" ("+fnum(b.peso)+" kg)").join(", "));
+  const sinPeso = bs.filter(b => b.peso==null);
+  if (sinPeso.length) out.push("Sin peso: bobina "+sinPeso.map(b=>b.n_bobina).join(", "));
+  const porNum = {};
+  bs.forEach(b => (porNum[normBobina(b.n_bobina)] = porNum[normBobina(b.n_bobina)] || []).push(b));
+  const rep = Object.values(porNum).filter(l => l.length > 1);
+  if (rep.length) out.push("Número repetido: "+rep.map(l => l[0].n_bobina+" ("+l.map(b=>fnum(b.peso)).join(" y ")+" kg)").join(", ")+". Si es la misma bobina, borrá una");
+  const sinEstado = bs.filter(b => !b.estado).length;
+  if (sinEstado) out.push(sinEstado+(sinEstado===1?" bobina sin":" bobinas sin")+" BIEN/MAL");
+  const scrap = (+p.scrap_empalme||0) + (+p.scrap_rollo||0);
+  if (p.kilos && scrap/p.kilos > 0.05) out.push("Scrap de "+(100*scrap/p.kilos).toFixed(1)+"%, muy alto");
+  const obs = p.observaciones||"";
+  if (obs.includes("⚠ REVISAR:")) out.push(obs.split("⚠ REVISAR:")[1].trim());
+  return out;
 };
 
 // "lun 4/8 06:30"

@@ -1,5 +1,5 @@
 // Validaciones automaticas: nunca se guarda nada inventado.
-// errores  -> bloquean la carga
+// errores      -> la hoja no se guarda y la falla queda registrada (la app la muestra)
 // advertencias -> se guarda igual pero se avisa que revisar
 //
 // La IA no siempre devuelve la misma estructura: a veces manda los campos en el
@@ -7,16 +7,26 @@
 // pueden venir con puntos de miles ("44.000") y las fechas en formato argentino
 // ("11/8/26" = 11 de agosto). Todo eso se normaliza aca.
 const salida = $input.first().json;
-let textoIA = salida.content?.parts?.[0]?.text ?? salida.text ?? '';
-const limpio = textoIA.replace(/```json/gi, '').replace(/```/g, '').trim();
+const prep = $('Preparar').first().json;
+const carga_id = prep.carga_id || ('n8n-' + $execution.id);
+
+// Si la IA no respondio (ni la principal ni la de respaldo) o devolvio algo que no
+// se puede leer, no se corta el flujo: se devuelve el motivo para registrarlo.
+const fallo = motivo => [{ json: { datos: null, errores: [motivo], advertencias: [], carga_id, chat_id: prep.chat_id } }];
+
+if (salida.error) {
+  const m = typeof salida.error === 'string' ? salida.error : (salida.error.message || JSON.stringify(salida.error));
+  return fallo('La IA no respondio (Gemini saturado o caido): ' + String(m).slice(0, 150));
+}
+const textoIA = salida.content?.parts?.[0]?.text ?? salida.text ?? '';
+const limpio = String(textoIA).replace(/\x60\x60\x60json/gi, '').replace(/\x60\x60\x60/g, '').trim();
 let bruto;
 try {
   bruto = JSON.parse(limpio);
 } catch (e) {
-  throw new Error('La IA no devolvio un JSON valido: ' + textoIA.substring(0, 300));
+  return fallo(limpio ? 'La IA devolvio la lectura cortada o mal formada' : 'La IA devolvio una respuesta vacia');
 }
 
-const prep = $('Preparar').first().json;
 const errores = [];
 const adv = [];
 const esIlegible = v => typeof v === 'string' && v.toUpperCase().includes('ILEGIBLE');
@@ -46,13 +56,23 @@ const aNumero = v => {
 };
 
 // Si la IA manda el peso como NUMERO en vez de texto ("peso": 44.000 sin comillas),
-// el JSON lo lee como 44,5 y se pierden los miles. Como sabemos el orden de
+// el JSON lo lee como 44 y se pierden los miles. Como sabemos el orden de
 // magnitud real, se recupera multiplicando, y se avisa para que lo revisen.
 const recuperarMiles = (n, minimoEsperado) => {
   if (isNaN(n) || n <= 0 || n >= minimoEsperado) return { valor: n, recuperado: false };
   let v = n;
   while (v < minimoEsperado) v *= 1000;
   return { valor: Math.round(v), recuperado: true, antes: n };
+};
+
+// Filas y bultos: si la IA lee otra cosa (una fecha, un telefono) queda un numero
+// imposible que la base rechaza. Se deja vacio y se avisa.
+const entero = (v, max, nombre) => {
+  if (v == null || v === '' || esIlegible(v)) return null;
+  const n = aNumero(v);
+  if (isNaN(n) || n <= 0) return null;
+  if (n > max) { adv.push(nombre + ' leido como ' + v + ': no es posible, se dejo vacio'); return null; }
+  return n;
 };
 
 // Acepta "2026-08-11" y tambien "11/8/26" o "11-08-2026" (dia/mes/anio, como se
@@ -111,8 +131,7 @@ if (fecha) {
   }
 }
 // Si no se pudo leer, NO se descarta la hoja: se guarda con la fecha de hoy y se
-// marca para revisar. Es preferible tener los pesos con la fecha a corregir que
-// perder la hoja entera.
+// marca para revisar.
 if (!fecha || isNaN(new Date(fecha + 'T00:00:00').getTime())) {
   const h = new Date();
   fecha = h.getFullYear() + '-' + String(h.getMonth() + 1).padStart(2, '0') + '-' + String(h.getDate()).padStart(2, '0');
@@ -139,7 +158,6 @@ if (!operario) adv.push('Operario faltante o ilegible');
 // --- rollera y maquina de origen ---
 // La ROLLERA la elige la persona al subir la hoja. La maquina que figura escrita
 // en la hoja es la que fabrico la bobina, y se guarda solo como trazabilidad.
-// Si no vino la rollera se guarda igual, bajo "S/D", para no perder los pesos.
 let rollera = String(prep.maquina_hint || '').trim();
 if (!rollera) {
   rollera = 'S/D';
@@ -201,7 +219,6 @@ for (const b of (Array.isArray(filas) ? filas : [])) {
 if (bobinas.length === 0) errores.push('No se pudo leer ninguna bobina de la hoja');
 
 // --- scrap ---
-// Mismo problema de los miles: un scrap de "1.000" puede llegar como 1.
 let se = aNumero(d.scrap_empalme);
 let sr = aNumero(d.scrap_rollo);
 const recSE = recuperarMiles(se, 100);
@@ -211,10 +228,13 @@ if (recSR.recuperado) { sr = recSR.valor; adv.push('Scrap de rollo vino como ' +
 if (isNaN(se)) adv.push('Scrap de empalme faltante o ilegible (se guarda 0)');
 if (isNaN(sr)) adv.push('Scrap de rollo faltante o ilegible (se guarda 0)');
 
+const filasN = entero(d.filas, 1000, 'Filas');
+const bultosN = entero(d.bultos, 20000, 'Bultos');
+
 // Lo que la IA no pudo leer queda escrito en la propia hoja, para que se vea en
 // la app y se sepa que hay que revisar (y que fue lo que fallo).
 const obsHoja = (d.observaciones && !esIlegible(d.observaciones)) ? String(d.observaciones).trim() : '';
-const aRevisar = adv.filter(a => /NO LEIDA|NO INDICADA|se corrigio|futura|mas de 60 dias|ilegible|sin marcar|VERIFICAR/i.test(a));
+const aRevisar = adv.filter(a => /NO LEIDA|NO INDICADA|se corrigio|futura|mas de 60 dias|ilegible|sin marcar|VERIFICAR|no es posible/i.test(a));
 const observaciones = aRevisar.length
   ? (obsHoja ? obsHoja + ' | ' : '') + '⚠ REVISAR: ' + aRevisar.join(' | ')
   : obsHoja;
@@ -226,10 +246,11 @@ const datos = {
   scrap_empalme: isNaN(se) ? 0 : se,
   scrap_rollo: isNaN(sr) ? 0 : sr,
   medida: (d.medida && !esIlegible(d.medida)) ? String(d.medida) : '',
-  filas: aNumero(d.filas) || null,
-  bultos: aNumero(d.bultos) || null,
+  filas: filasN,
+  bultos: bultosN,
   observaciones,
-  origen: prep.origen
+  origen: prep.origen,
+  carga_id
 };
 
-return [{ json: { datos, errores, advertencias: adv, chat_id: prep.chat_id } }];
+return [{ json: { datos, errores, advertencias: adv, carga_id, chat_id: prep.chat_id } }];
