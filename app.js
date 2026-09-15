@@ -339,6 +339,44 @@ const tituloMaquina = codigo => {
   return c.charAt(0).toUpperCase()+c.slice(1);
 };
 
+// ── Rollos por turno ─────────────────────────────────────────────────────────
+// El último número de la medida es la cantidad de rollos por bulto:
+// "45x60x20x24" → 24. Si hay dos productos ("80x110x10x50 / 60x90x10x24") se usa
+// el primero. Con menos de 4 números no se puede saber (puede faltar ese dato).
+const rollosPorBulto = medida => {
+  const primero = String(medida||"").split(/[\/,]/)[0];
+  const nums = primero.match(/\d+/g) || [];
+  return nums.length >= 4 ? Number(nums[nums.length-1]) : null;
+};
+const millares = n => ((Number(n)||0)/1000).toLocaleString("es-AR",{maximumFractionDigits:1});
+
+const dbRollos = {
+  async listar(desde, hasta) {
+    const {data,error} = await SB.from("v_rollos").select("*").eq("empresa",EMPRESA)
+      .gte("fecha",desde).lte("fecha",hasta)
+      .order("fecha",{ascending:false}).order("creado_en",{ascending:false}).limit(3000);
+    if(error) return null;   // falta el SQL 16
+    return data||[];
+  },
+  async guardar(f) {
+    const {data,error} = await SB.from("rollos_turno").insert({
+      maquina_id: f.maquinaId, fecha: f.fecha, turno: f.turno, medida: f.medida||"",
+      bultos: Number(f.bultos), rollos_por_bulto: Number(f.rollosPorBulto), rollos: Number(f.rollos),
+      creado_por: f.creadoPor||""
+    }).select();
+    if(error) return {ok:false, detalle: /rollos_turno|42P01/.test(error.message+error.code)
+      ? "Falta correr el SQL 16 (rollos) en Supabase." : error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+  async borrar(id) {
+    const {data,error} = await SB.from("rollos_turno").delete().eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+};
+
 // ── Hojas para revisar ───────────────────────────────────────────────────────
 // Se calcula en el momento con los datos reales: cuando se corrige, la marca
 // desaparece sola. Rangos tomados de lo que es normal en la planta (mediana 10
