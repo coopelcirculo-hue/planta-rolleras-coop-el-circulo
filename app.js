@@ -347,8 +347,9 @@ const normBobina = n => String(n||"").toUpperCase().replace(/[^0-9A-Z]/g,"");
 const problemasHoja = (p, bobinasDeLaHoja) => {
   const out = [];
   const bs = bobinasDeLaHoja || [];
+  // 120 días: una hoja de hace 2 meses es normal; las de años anteriores no.
   if (p.fecha > hoyIso()) out.push("Fecha futura ("+fdate(p.fecha)+")");
-  else if (p.fecha < haceDiasIso(60)) out.push("Fecha de hace más de 2 meses ("+fdate(p.fecha)+")");
+  else if (p.fecha < haceDiasIso(120)) out.push("Fecha de hace más de 4 meses ("+fdate(p.fecha)+"): probablemente el año o el mes mal leído");
   if (bs.length > 20) out.push("Tiene "+bs.length+" bobinas, el doble de lo normal: puede haber otra hoja mezclada o la misma foto cargada más de una vez");
   else if ((+p.kilos||0) > 1000000) out.push(fnum(p.kilos)+" kg en un turno es mucho más de lo normal");
   const raros = bs.filter(b => b.peso!=null && (+b.peso < 20000 || +b.peso > 80000));
