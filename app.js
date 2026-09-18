@@ -263,6 +263,18 @@ const db = {
     return {ok:true};
   },
 
+  // El scrap está en otra tabla (una fila por hoja): se crea o se actualiza.
+  async actualizarScrap(produccionId, empalme, rollo) {
+    const {data,error} = await SB.from("scrap").upsert({
+      produccion_id: produccionId,
+      empalme: empalme===""||empalme==null ? 0 : Number(empalme),
+      rollo: rollo===""||rollo==null ? 0 : Number(rollo)
+    },{onConflict:"produccion_id"}).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+
   async borrarHoja(id) {
     // Las bobinas y el scrap se borran solos (on delete cascade).
     const {data,error} = await SB.from("producciones").delete().eq("id",id).select();
@@ -339,15 +351,16 @@ const tituloMaquina = codigo => {
   return c.charAt(0).toUpperCase()+c.slice(1);
 };
 
-// ── Rollos por turno ─────────────────────────────────────────────────────────
-// El último número de la medida es la cantidad de rollos por bulto:
-// "45x60x20x24" → 24. Si hay dos productos ("80x110x10x50 / 60x90x10x24") se usa
-// el primero. Con menos de 4 números no se puede saber (puede faltar ese dato).
-const rollosPorBulto = medida => {
-  const primero = String(medida||"").split(/[\/,]/)[0];
-  const nums = primero.match(/\d+/g) || [];
-  return nums.length >= 4 ? Number(nums[nums.length-1]) : null;
-};
+// ── Rollos y bolsas por turno ────────────────────────────────────────────────
+// La medida dice todo: "45x60x20x24" = bolsa de 45x60, 20 bolsas por rollo y
+// 24 rollos por bulto. Si hay dos productos ("80x110x10x50 / 60x90x10x24") se usa
+// el primero. Si falta un número, ese dato se escribe a mano.
+const numerosMedida = medida => (String(medida||"").split(/[\/,]/)[0].match(/\d+/g) || []).map(Number);
+const bolsasPorRollo = medida => { const n = numerosMedida(medida); return n.length >= 3 ? n[2] : null; };
+const rollosPorBulto = medida => { const n = numerosMedida(medida); return n.length >= 4 ? n[3] : null; };
+// Los millares son de BOLSAS (unidades). Los registros viejos sin el dato de
+// bolsas se calculan con la medida que se guardó.
+const bolsasDe = r => r.bolsas != null ? Number(r.bolsas) : (Number(r.rollos)||0) * (bolsasPorRollo(r.medida)||0);
 const millares = n => ((Number(n)||0)/1000).toLocaleString("es-AR",{maximumFractionDigits:1});
 
 const dbRollos = {
@@ -362,9 +375,13 @@ const dbRollos = {
     const {data,error} = await SB.from("rollos_turno").insert({
       maquina_id: f.maquinaId, fecha: f.fecha, turno: f.turno, medida: f.medida||"",
       bultos: Number(f.bultos), rollos_por_bulto: Number(f.rollosPorBulto), rollos: Number(f.rollos),
+      bolsas_por_rollo: f.bolsasPorRollo ? Number(f.bolsasPorRollo) : null,
+      bolsas: f.bolsas != null ? Number(f.bolsas) : null,
       creado_por: f.creadoPor||""
     }).select();
-    if(error) return {ok:false, detalle: /rollos_turno|42P01/.test(error.message+error.code)
+    if(error) return {ok:false, detalle: /bolsas/.test(error.message)
+      ? "Falta correr el SQL 17 (bolsas) en Supabase."
+      : /rollos_turno|42P01/.test(error.message+error.code)
       ? "Falta correr el SQL 16 (rollos) en Supabase." : error.message};
     if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
     return {ok:true};

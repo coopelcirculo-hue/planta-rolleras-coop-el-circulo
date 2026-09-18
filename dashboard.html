@@ -313,8 +313,12 @@ function RollosForm({maquinas,init,onSave,onClose}){
   const sugerido=rollosPorBulto(f.medida);
   const rpb=f.rpb!==""?Number(f.rpb):(sugerido||0);
   const rollos=(Number(f.bultos)||0)*rpb;
-  const valido=f.maquinaId&&f.fecha&&f.turno&&Number(f.bultos)>0&&rpb>0;
-  const guardar=async()=>{ setGuardando(true); await onSave({...f,rollosPorBulto:rpb,rollos}); setGuardando(false); };
+  // Bolsas por rollo: el tercer número de la medida (45x60x20x24 → 20).
+  const sugeridoB=bolsasPorRollo(f.medida);
+  const bpr=f.bpr!==""&&f.bpr!=null?Number(f.bpr):(sugeridoB||0);
+  const bolsas=rollos*bpr;
+  const valido=f.maquinaId&&f.fecha&&f.turno&&Number(f.bultos)>0&&rpb>0&&bpr>0;
+  const guardar=async()=>{ setGuardando(true); await onSave({...f,rollosPorBulto:rpb,rollos,bolsasPorRollo:bpr,bolsas}); setGuardando(false); };
   const elegirMaquina=id=>{
     const m=maquinas.find(x=>x.maquina_id===id);
     setF(x=>({...x,maquinaId:id,medida:x.medida||(m&&m.medida)||""}));
@@ -338,17 +342,20 @@ function RollosForm({maquinas,init,onSave,onClose}){
     <Field label="Medida">
       <input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="Ej: 45x60x20x24"/>
     </Field>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
       <Field label="Bultos">
         <input type="number" inputMode="numeric" min="1" style={inp} value={f.bultos} onChange={e=>s("bultos",e.target.value)} placeholder="Ej: 12" autoFocus/>
       </Field>
       <Field label="Rollos por bulto">
         <input type="number" inputMode="numeric" min="1" style={inp} value={f.rpb} onChange={e=>s("rpb",e.target.value)} placeholder={sugerido?String(sugerido)+" (de la medida)":"Ej: 24"}/>
       </Field>
+      <Field label="Bolsas por rollo">
+        <input type="number" inputMode="numeric" min="1" style={inp} value={f.bpr} onChange={e=>s("bpr",e.target.value)} placeholder={sugeridoB?String(sugeridoB)+" (de la medida)":"Ej: 20"}/>
+      </Field>
     </div>
     <div style={{background:D,borderRadius:10,padding:"12px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
-      <span style={{color:GR,fontSize:12}}>{Number(f.bultos)||0} bultos × {rpb||"?"} rollos</span>
-      <span style={{color:GN,fontWeight:700,fontSize:18}}>{fnum(rollos)} rollos <span style={{color:GR,fontSize:12,fontWeight:400}}>· {millares(rollos)} millares</span></span>
+      <span style={{color:GR,fontSize:12}}>{Number(f.bultos)||0} bultos × {rpb||"?"} rollos × {bpr||"?"} bolsas</span>
+      <span style={{color:GN,fontWeight:700,fontSize:18}}>{millares(bolsas)} millares <span style={{color:GR,fontSize:12,fontWeight:400}}>· {fnum(rollos)} rollos · {fnum(bolsas)} bolsas</span></span>
     </div>
     <div style={{display:"flex",gap:10}}>
       <button onClick={onClose} style={{...Btn("transparent",GR),flex:1}}>Cancelar</button>
@@ -369,7 +376,7 @@ function RollosTurno({maquinas,perfil}){
     const h=new Date().getHours();
     const enMarcha=maquinas.find(m=>m.estado==="produciendo");
     setForm({maquinaId:enMarcha?.maquina_id||"",fecha:hoyIso(),turno:h>=6&&h<18?"dia":"noche",
-             medida:enMarcha?.medida||"",bultos:"",rpb:""});
+             medida:enMarcha?.medida||"",bultos:"",rpb:"",bpr:""});
   };
   const guardar=async f=>{
     const r=await dbRollos.guardar({...f,creadoPor:perfil?.nombre||""});
@@ -384,9 +391,11 @@ function RollosTurno({maquinas,perfil}){
   };
 
   const filas=lista||[];
-  const total=filas.reduce((a,r)=>a+(+r.rollos||0),0);
+  // Los millares son de bolsas (unidades), como se cuentan en la planta.
+  const total=filas.reduce((a,r)=>a+bolsasDe(r),0);
+  const totalRollos=filas.reduce((a,r)=>a+(+r.rollos||0),0);
   const porMaquina={};
-  filas.forEach(r=>{ porMaquina[r.maquina]=(porMaquina[r.maquina]||0)+(+r.rollos||0); });
+  filas.forEach(r=>{ porMaquina[r.maquina]=(porMaquina[r.maquina]||0)+bolsasDe(r); });
 
   return(<div style={{marginTop:24}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10,flexWrap:"wrap"}}>
@@ -402,7 +411,7 @@ function RollosTurno({maquinas,perfil}){
       <div style={{display:"flex",gap:18,flexWrap:"wrap",alignItems:"baseline",marginBottom:filas.length?12:0}}>
         <div>
           <div style={{color:GR,fontSize:10,letterSpacing:1}}>ÚLTIMOS 7 DÍAS</div>
-          <div style={{color:GN,fontWeight:700,fontSize:22}}>{millares(total)} <span style={{fontSize:12,color:GR,fontWeight:400}}>millares · {fnum(total)} rollos</span></div>
+          <div style={{color:GN,fontWeight:700,fontSize:22}}>{millares(total)} <span style={{fontSize:12,color:GR,fontWeight:400}}>millares de bolsas · {fnum(totalRollos)} rollos</span></div>
         </div>
         {Object.entries(porMaquina).sort().map(([m,n])=>(
           <div key={m}>
@@ -419,8 +428,8 @@ function RollosTurno({maquinas,perfil}){
               <span style={{color:W,fontWeight:600}}>{tituloMaquina(r.maquina)}</span>
               <span style={{color:GR}}> · {fdate(r.fecha)} · {r.turno}{r.medida?" · "+r.medida:""}</span>
             </div>
-            <span style={{color:GR,whiteSpace:"nowrap"}}>{r.bultos} × {r.rollos_por_bulto}</span>
-            <span style={{color:GN,fontWeight:700,whiteSpace:"nowrap",minWidth:80,textAlign:"right"}}>{fnum(r.rollos)}</span>
+            <span style={{color:GR,whiteSpace:"nowrap"}}>{r.bultos} × {r.rollos_por_bulto} × {r.bolsas_por_rollo||bolsasPorRollo(r.medida)||"?"}</span>
+            <span style={{color:GN,fontWeight:700,whiteSpace:"nowrap",minWidth:80,textAlign:"right"}}>{millares(bolsasDe(r))} mill.</span>
             <button onClick={()=>borrar(r)} title="Borrar" style={{...Btn("transparent",RE,{fontSize:11,padding:"4px 9px",borderColor:RE+"55"})}}>✕</button>
           </div>
         ))}
@@ -968,7 +977,8 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
   const [f,setF]=useState({
     fecha:hoja.fecha, turno:hoja.turno, medida:hoja.medida||"",
     bultos:hoja.bultos??"", observaciones:hoja.observaciones||"",
-    maquinaOrigen:hoja.maquina_origen||""
+    maquinaOrigen:hoja.maquina_origen||"",
+    scrapEmpalme:hoja.scrap_empalme??"", scrapRollo:hoja.scrap_rollo??""
   });
   const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const [bobinas,setBobinas]=useState(null);
@@ -981,8 +991,12 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
   const guardarHoja=async()=>{
     setGuardando(true);
     const r=await db.actualizarHoja(hoja.id,f);
+    // El scrap va en otra tabla: se guarda solo si cambió.
+    const cambioScrap=String(f.scrapEmpalme)!==String(hoja.scrap_empalme??"")||String(f.scrapRollo)!==String(hoja.scrap_rollo??"");
+    const r2=r.ok&&cambioScrap?await db.actualizarScrap(hoja.id,f.scrapEmpalme,f.scrapRollo):{ok:true};
     setGuardando(false);
     if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
+    if(!r2.ok){ setMsg({t:"error",x:"La hoja se guardó, pero el scrap no: "+r2.detalle}); return; }
     setMsg({t:"ok",x:"✓ Hoja corregida"}); onCambio();
   };
 
@@ -1021,6 +1035,8 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
       <Field label="Medida"><input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)}/></Field>
       <Field label="Bultos"><input type="number" style={inp} value={f.bultos} onChange={e=>s("bultos",e.target.value)}/></Field>
       <Field label="Máquina de origen"><input style={inp} value={f.maquinaOrigen} onChange={e=>s("maquinaOrigen",e.target.value)}/></Field>
+      <Field label="Scrap empalme (kg)"><input type="number" inputMode="numeric" style={inp} value={f.scrapEmpalme} onChange={e=>s("scrapEmpalme",e.target.value)}/></Field>
+      <Field label="Scrap rollo (kg)"><input type="number" inputMode="numeric" style={inp} value={f.scrapRollo} onChange={e=>s("scrapRollo",e.target.value)}/></Field>
     </div>
     <Field label="Observaciones"><input style={inp} value={f.observaciones} onChange={e=>s("observaciones",e.target.value)}/></Field>
 
@@ -1128,6 +1144,7 @@ function Reportes(){
   // Rollos: por semana (lunes a domingo) o por mes si el período es largo.
   const rollosF=(rollos||[]).filter(r=>rollera==="todas"||r.maquina===rollera);
   const totalRollos=rollosF.reduce((a,r)=>a+(+r.rollos||0),0);
+  const totalBolsas=rollosF.reduce((a,r)=>a+bolsasDe(r),0);
   const turnosRollos=new Set(rollosF.map(r=>r.maquina+"|"+r.fecha+"|"+r.turno)).size;
   const porMes=(new Date(hasta)-new Date(desde))/86400000>45;
   const clavePeriodo=f=>{
@@ -1137,12 +1154,12 @@ function Reportes(){
   };
   const rollosPeriodos=Object.values(rollosF.reduce((m,r)=>{
     const k=clavePeriodo(r.fecha);
-    m[k]=m[k]||{clave:k,rollos:0,maq:{}};
-    m[k].rollos+=(+r.rollos||0);
-    m[k].maq[r.maquina]=(m[k].maq[r.maquina]||0)+(+r.rollos||0);
+    m[k]=m[k]||{clave:k,bolsas:0,maq:{}};
+    m[k].bolsas+=bolsasDe(r);
+    m[k].maq[r.maquina]=(m[k].maq[r.maquina]||0)+bolsasDe(r);
     return m;
   },{})).sort((a,b)=>a.clave<b.clave?-1:1);
-  const maxRollosPer=Math.max(1,...rollosPeriodos.map(p=>p.rollos));
+  const maxRollosPer=Math.max(1,...rollosPeriodos.map(p=>p.bolsas));
   const MESES=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
   const etiquetaPeriodo=k=>porMes?MESES[Number(k.slice(5,7))-1]+" "+k.slice(0,4):"Semana del "+fdate(k).slice(0,5);
 
@@ -1272,10 +1289,10 @@ function Reportes(){
         <StatCard v={bobinas.length} l="Bobinas" s={bobinas.length?fnum(Math.round(kilos/bobinas.length))+" kg c/u":"—"} c={W}/>
         <StatCard v={mal.length} l="Con error" s={pctError+(sinEstado?" · "+sinEstado+" sin marcar":"")} c={mal.length?RE:GN}/>
         <StatCard v={fnum(se+sr)} l="Scrap (kg)" s={pctScrap.toFixed(2)+"% de lo producido"} c={pctScrap>3?RE:BL}/>
-        <StatCard v={millares(totalRollos)} l="Millares de rollos" s={rollos===null?"falta el SQL 16":fnum(totalRollos)+" rollos · "+turnosRollos+" turnos"} c={GN}/>
+        <StatCard v={millares(totalBolsas)} l="Millares de bolsas" s={rollos===null?"falta el SQL 16":fnum(totalRollos)+" rollos · "+turnosRollos+" turnos"} c={GN}/>
       </div>
 
-      <Caja titulo={"📦 Rollos "+(porMes?"por mes":"por semana")+" (millares)"}>
+      <Caja titulo={"📦 Millares de bolsas "+(porMes?"por mes":"por semana")}>
         {rollos===null?<p style={{color:O,fontSize:12}}>Falta correr el SQL 16 en Supabase.</p>:
          rollosPeriodos.length===0?<p style={{color:GR,fontSize:12}}>No se cargaron rollos en este período. Se cargan en Monitoreo → Rollos por turno.</p>:
          rollosPeriodos.map(p=>(
@@ -1283,9 +1300,9 @@ function Reportes(){
             <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8,flexWrap:"wrap"}}>
               <span style={{color:W,fontWeight:600}}>{etiquetaPeriodo(p.clave)}</span>
               <span style={{color:GR}}>{Object.entries(p.maq).sort().map(([m,n])=>tituloMaquina(m)+": "+millares(n)).join(" · ")}</span>
-              <span style={{color:GN,fontWeight:700}}>{millares(p.rollos)} millares</span>
+              <span style={{color:GN,fontWeight:700}}>{millares(p.bolsas)} millares</span>
             </div>
-            <Barra valor={p.rollos} max={maxRollosPer} color={GN}/>
+            <Barra valor={p.bolsas} max={maxRollosPer} color={GN}/>
           </div>
         ))}
       </Caja>
