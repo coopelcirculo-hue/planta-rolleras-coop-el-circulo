@@ -990,13 +990,16 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
 
   const guardarHoja=async()=>{
     setGuardando(true);
-    const r=await db.actualizarHoja(hoja.id,f);
-    // El scrap va en otra tabla: se guarda solo si cambió.
+    // El scrap va en otra tabla: se guarda solo si cambió. Si lo corrigieron,
+    // la nota de "scrap mal leído por la IA" ya no hace falta y se quita sola.
     const cambioScrap=String(f.scrapEmpalme)!==String(hoja.scrap_empalme??"")||String(f.scrapRollo)!==String(hoja.scrap_rollo??"");
+    const datos=cambioScrap?{...f,observaciones:quitarNotaRevisar(f.observaciones,/scrap mal leido por la IA/i)}:f;
+    const r=await db.actualizarHoja(hoja.id,datos);
     const r2=r.ok&&cambioScrap?await db.actualizarScrap(hoja.id,f.scrapEmpalme,f.scrapRollo):{ok:true};
     setGuardando(false);
     if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
     if(!r2.ok){ setMsg({t:"error",x:"La hoja se guardó, pero el scrap no: "+r2.detalle}); return; }
+    if(cambioScrap) s("observaciones",datos.observaciones);
     setMsg({t:"ok",x:"✓ Hoja corregida"}); onCambio();
   };
 

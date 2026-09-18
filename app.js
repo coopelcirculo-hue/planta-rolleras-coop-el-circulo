@@ -394,6 +394,24 @@ const dbRollos = {
   },
 };
 
+// ── Quitar una nota de revisión ya resuelta ──────────────────────────────────
+// Las observaciones son "texto de la hoja | ⚠ REVISAR: motivo 1 | motivo 2".
+// Saca el motivo que coincide con `patron` y deja el resto igual; si el que se
+// saca era el que llevaba la marca "⚠ REVISAR:", la marca pasa al siguiente.
+const quitarNotaRevisar = (obs, patron) => {
+  const MARCA = "⚠ REVISAR:";
+  const out = [];
+  let enRevisar = false, marcaPendiente = false;
+  for (const parte of String(obs||"").split(" | ")) {
+    let texto = parte;
+    if (parte.startsWith(MARCA)) { enRevisar = true; marcaPendiente = true; texto = parte.slice(MARCA.length).trim(); }
+    if (enRevisar && patron.test(texto)) continue;
+    if (enRevisar && marcaPendiente) { out.push(MARCA + " " + texto); marcaPendiente = false; }
+    else out.push(texto);
+  }
+  return out.filter(p => p.trim() !== "").join(" | ");
+};
+
 // ── Hojas para revisar ───────────────────────────────────────────────────────
 // Se calcula en el momento con los datos reales: cuando se corrige, la marca
 // desaparece sola. Rangos tomados de lo que es normal en la planta (mediana 10
