@@ -429,14 +429,20 @@ const problemasHoja = (p, bobinasDeLaHoja) => {
   if (raros.length) out.push("Peso raro en "+raros.map(b=>"bobina "+b.n_bobina+" ("+fnum(b.peso)+" kg)").join(", "));
   const sinPeso = bs.filter(b => b.peso==null);
   if (sinPeso.length) out.push("Sin peso: bobina "+sinPeso.map(b=>b.n_bobina).join(", "));
+  // La numeración se repite (bobinas viejas y nuevas): el mismo número con otro
+  // peso es otra bobina. Solo se marca si el peso también coincide (±50 kg),
+  // que es lo que pasa cuando la misma bobina se cargó dos veces.
   const porNum = {};
   bs.forEach(b => (porNum[normBobina(b.n_bobina)] = porNum[normBobina(b.n_bobina)] || []).push(b));
-  const rep = Object.values(porNum).filter(l => l.length > 1);
-  if (rep.length) out.push("Número repetido: "+rep.map(l => l[0].n_bobina+" ("+l.map(b=>fnum(b.peso)).join(" y ")+" kg)").join(", ")+". Si es la misma bobina, borrá una");
+  const rep = Object.values(porNum).filter(l => l.length > 1 &&
+    l.some((b,i) => l.some((c,j) => j>i && b.peso!=null && c.peso!=null && Math.abs(b.peso-c.peso) <= 50)));
+  if (rep.length) out.push("Bobina posiblemente cargada dos veces: "+rep.map(l => l[0].n_bobina+" ("+l.map(b=>fnum(b.peso)).join(" y ")+" kg)").join(", ")+". Si es la misma, borrá una");
   const sinEstado = bs.filter(b => !b.estado).length;
   if (sinEstado) out.push(sinEstado+(sinEstado===1?" bobina sin":" bobinas sin")+" BIEN/MAL");
+  // Lo normal es 2 a 5%. Entre 5 y 10% es alto pero posible (se ve en el reporte
+  // de scrap); más del 10% casi siempre es un número mal leído.
   const scrap = (+p.scrap_empalme||0) + (+p.scrap_rollo||0);
-  if (p.kilos && scrap/p.kilos > 0.05) out.push("Scrap de "+(100*scrap/p.kilos).toFixed(1)+"%, muy alto");
+  if (p.kilos && scrap/p.kilos > 0.10) out.push("Scrap de "+(100*scrap/p.kilos).toFixed(1)+"%: seguramente mal leído");
   const obs = p.observaciones||"";
   if (obs.includes("⚠ REVISAR:")) out.push(obs.split("⚠ REVISAR:")[1].trim());
   return out;

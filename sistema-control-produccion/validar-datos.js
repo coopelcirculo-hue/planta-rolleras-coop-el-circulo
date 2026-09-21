@@ -219,8 +219,16 @@ for (const b of (Array.isArray(filas) ? filas : [])) {
 if (bobinas.length === 0) errores.push('No se pudo leer ninguna bobina de la hoja');
 
 // --- scrap ---
-let se = aNumero(d.scrap_empalme);
-let sr = aNumero(d.scrap_rollo);
+// A veces el scrap se anota como suma ("5.700 + 1.500"): hay que sumar las
+// partes, no juntar los digitos (eso daba 57001500).
+const aNumeroSuma = v => {
+  if (v == null) return NaN;
+  if (typeof v === 'number') return v;
+  const partes = String(v).split('+').map(aNumero).filter(n => !isNaN(n));
+  return partes.length ? partes.reduce((a, n) => a + n, 0) : NaN;
+};
+let se = aNumeroSuma(d.scrap_empalme);
+let sr = aNumeroSuma(d.scrap_rollo);
 const recSE = recuperarMiles(se, 100);
 if (recSE.recuperado) { se = recSE.valor; adv.push('Scrap de empalme vino como ' + recSE.antes + ', se interpreto ' + se + ' kg. VERIFICAR.'); }
 const recSR = recuperarMiles(sr, 100);
