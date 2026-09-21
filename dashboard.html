@@ -1094,14 +1094,20 @@ function Barra({valor,max,color}){
   </div>);
 }
 
+// Semana de trabajo: lunes a sábado (el domingo no se trabaja). El domingo
+// todavía cuenta como la semana que terminó. semanas=-1 es la semana anterior.
+const isoLocal=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+const lunesIso=(semanas=0)=>{ const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-(d.getDay()+6)%7+7*semanas); return isoLocal(d); };
+const sabadoIso=(semanas=0)=>{ const d=new Date(lunesIso(semanas)+"T12:00:00"); d.setDate(d.getDate()+5); return isoLocal(d); };
+
 function Reportes({perfil}){
   const [periodo,setPeriodo]=useState("semana");
   // Reportes guardados: se guarda una copia de cada reporte que se imprime
   const [guardados,setGuardados]=useState(null);
   const [avisoGuardado,setAvisoGuardado]=useState(null);
   const hojaRef=useRef(null);
-  const [desde,setDesde]=useState(haceDiasIso(7));
-  const [hasta,setHasta]=useState(hoyIso());
+  const [desde,setDesde]=useState(lunesIso(0));
+  const [hasta,setHasta]=useState(sabadoIso(0));
   const [todasBobinas,setTodasBobinas]=useState([]);
   const [todasProd,setTodasProd]=useState([]);
   const [cargando,setCargando]=useState(true);
@@ -1119,7 +1125,8 @@ function Reportes({perfil}){
   const aplicar=p=>{
     setPeriodo(p);
     const hoy=new Date();
-    if(p==="semana"){ setDesde(haceDiasIso(7)); setHasta(hoyIso()); }
+    if(p==="semana"){ setDesde(lunesIso(0)); setHasta(sabadoIso(0)); }
+    if(p==="semanaPasada"){ setDesde(lunesIso(-1)); setHasta(sabadoIso(-1)); }
     if(p==="mes"){ setDesde(haceDiasIso(30)); setHasta(hoyIso()); }
     if(p==="trimestre"){ setDesde(haceDiasIso(90)); setHasta(hoyIso()); }
   };
@@ -1336,13 +1343,15 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
 
   return(<div ref={hojaRef}>
     <div className="no-imprimir" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
-      {[["semana","Semana"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
+      {[["semana","Esta semana"],["semanaPasada","Semana pasada"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
         <button key={id} onClick={()=>aplicar(id)} style={{...Btn(periodo===id?O:"transparent",periodo===id?D:GR,{padding:"7px 16px",fontSize:12})}}>{lbl}</button>
       ))}
       <button onClick={imprimir} title={"En el diálogo de impresión desactivá \"Encabezados y pies de página\": el pie ya lo pone el reporte"} style={{...Btn("transparent",W,{padding:"7px 16px",fontSize:12,marginLeft:"auto"})}}>🖨️ Imprimir</button>
+      <button onClick={()=>{ if(cargando||bobinas.length===0){ setAvisoGuardado(["No hay datos en este período para guardar.",O]); return; } guardarCopia(); }}
+        title="Guarda una copia de este reporte tal como está ahora" style={{...Btn(O,D,{padding:"7px 16px",fontSize:12})}}>💾 Guardar reporte</button>
       <button onClick={abrirGuardados} title="Los reportes que ya se imprimieron, por fecha" style={{...Btn("transparent",W,{padding:"7px 16px",fontSize:12})}}>📁 Guardados</button>
     </div>
-    {avisoGuardado&&<div className="no-imprimir" style={{color:avisoGuardado[1],fontSize:11,marginBottom:12}}>{avisoGuardado[0]}</div>}
+    {avisoGuardado&&<div className="no-imprimir" style={{color:avisoGuardado[1],fontSize:12,fontWeight:600,marginBottom:12,padding:"8px 12px",border:"1px solid "+avisoGuardado[1]+"66",borderRadius:8}}>{avisoGuardado[0]}</div>}
 
     {/* Encabezado que solo sale en el papel */}
     <div className="solo-imprimir reporte-encabezado">
