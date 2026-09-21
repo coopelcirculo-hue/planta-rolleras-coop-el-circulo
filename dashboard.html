@@ -591,6 +591,15 @@ function UltimasCargas({version}){
       const r=c.resultado||((c.advertencias||[]).some(a=>String(a).startsWith("Ya existia"))?"sumada":"nueva");
       const [icono,color,etiqueta]=TIPOS[r]||["•",GR,r];
       const h=c.hoja;
+      // Cómo está AHORA (el renglón muestra cómo quedó al subirla): la hoja se
+      // lee en vivo, así que si alguien la corrigió o la borró, se nota acá.
+      const obs=h?.observaciones||"";
+      const ahora = r==="fallida"
+          ? (lista.some(x=>c.ejecucion&&x.carga_id==="reenvio-"+c.ejecucion&&x.resultado!=="fallida")
+              ? ["✓ Ya se volvió a cargar",GN] : ["Todavía no está cargada: volvé a subir la foto",O])
+        : !h ? ["La hoja se borró después (era repetida)",GR]
+        : r!=="nueva" ? (obs.includes("⚠ REVISAR") ? ["Todavía hay que revisarla en Reportes",O] : ["✓ Ya se corrigió",GN])
+        : null;
       return(<div key={i} style={{display:"flex",gap:8,fontSize:11,padding:"7px 0",lineHeight:1.5,
           borderBottom:i<lista.length-1?"1px solid "+BR+"66":"none"}}>
         <span style={{color,width:18,flexShrink:0}}>{icono}</span>
@@ -601,6 +610,7 @@ function UltimasCargas({version}){
               :(c.rollera?" · "+tituloMaquina(c.rollera):"")}
           </div>
           {r==="fallida"&&c.motivo&&<div style={{color:GR}}>{c.motivo}</div>}
+          {ahora&&<div style={{color:ahora[1],fontWeight:600}}>Ahora: {ahora[0]}</div>}
         </div>
         <span style={{color:GR,whiteSpace:"nowrap",flexShrink:0}}>{fhora(c.momento)}</span>
       </div>);
