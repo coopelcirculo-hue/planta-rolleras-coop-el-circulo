@@ -1102,6 +1102,8 @@ function Reportes(){
   const [corrigiendo,setCorrigiendo]=useState(null);
   // "todas" o el código de una rollera: permite el reporte individual por máquina.
   const [rollera,setRollera]=useState("todas");
+  // La lista de hojas muestra por defecto solo las que tienen algo para revisar.
+  const [soloRevisar,setSoloRevisar]=useState(true);
   // Rollos por turno (se cargan en Monitoreo). null = falta el SQL 16.
   const [rollos,setRollos]=useState(null);
 
@@ -1438,17 +1440,24 @@ function Reportes(){
           const hojas=producciones.map(p=>({p,problemas:problemasHoja(p,porHoja[p.id])}))
             .sort((a,b)=>(b.problemas.length>0)-(a.problemas.length>0));
           const pendientes=hojas.filter(h=>h.problemas.length).length;
+          const visibles=soloRevisar?hojas.filter(h=>h.problemas.length):hojas;
           return(<>
-            <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>
-              🛠 Hojas cargadas en el período
-              {pendientes>0&&<span style={{color:O,fontWeight:400,marginLeft:8}}>· {pendientes} para revisar</span>}
-            </h3>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
+              <h3 style={{color:W,fontSize:13,margin:0,fontWeight:700}}>🛠 Hojas cargadas en el período</h3>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>setSoloRevisar(true)} style={{...Btn(soloRevisar?O:"transparent",soloRevisar?D:GR,{padding:"6px 12px",fontSize:11})}}>Para revisar ({pendientes})</button>
+                <button onClick={()=>setSoloRevisar(false)} style={{...Btn(!soloRevisar?O:"transparent",!soloRevisar?D:GR,{padding:"6px 12px",fontSize:11})}}>Todas ({hojas.length})</button>
+              </div>
+            </div>
             <p style={{color:GR,fontSize:11,marginBottom:12,lineHeight:1.5}}>
-              Ninguna hoja se descarta: si algo no es normal, la hoja se guarda igual y
-              queda arriba en naranja con el motivo. Corregila y la marca se va sola.
+              {soloRevisar
+                ?"Solo las hojas con algo raro, con el motivo en naranja. Corregila y sale sola de esta lista."
+                :"Todas las hojas del período. Las que tienen algo para revisar aparecen primero, en naranja."}
             </p>
+            {soloRevisar&&pendientes===0&&
+              <div style={{color:GN,fontSize:12,padding:12,background:GN+"15",borderRadius:8}}>✓ No hay hojas para revisar en este período.</div>}
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {hojas.map(({p,problemas})=>{
+              {visibles.map(({p,problemas})=>{
                 const marcada=problemas.length>0;
                 return(<div key={p.id} style={{background:CA,border:"1px solid "+(marcada?O:BR),borderRadius:10,
                      padding:"11px 13px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
