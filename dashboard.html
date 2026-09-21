@@ -557,7 +557,7 @@ function mensajeCarga(d){
       "\nProbá sacar la foto de nuevo, derecha y con buena luz, o cargala a mano acá abajo."};
   if(d.resultado==="posible_repetida")
     return {tipo:"aviso",texto:"⚠️ Cargada, pero se parece a otra hoja ya cargada: "+desc+
-      "\nSi subiste la misma foto dos veces, borrala desde Reportes. Si son hojas distintas, no hagas nada."};
+      "\nQuedó marcada en Reportes para revisar. No hace falta volver a subirla."};
   if(d.resultado==="ya_cargada")
     return {tipo:"info",texto:"ℹ️ Esta hoja ya estaba cargada, no se agregó nada: "+desc+
       ((d.advertencias||[]).length?"\n"+d.advertencias.join(" | "):"")};
@@ -1117,13 +1117,6 @@ function Reportes(){
   // Rollos por turno (se cargan en Monitoreo). null = falta el SQL 16.
   const [rollos,setRollos]=useState(null);
 
-  // Una hoja marcada como "posible repetida" se puede borrar de un toque.
-  const borrarRepetida=async p=>{
-    if(!confirm("¿Borrar la hoja de "+tituloMaquina(p.maquina)+" del "+fdate(p.fecha)+" ("+p.bobinas+" bobinas)? Hacelo solo si es la misma foto subida dos veces."))return;
-    const r=await db.borrarHoja(p.id);
-    if(!r.ok){ alert(r.detalle); return; }
-    recargar();
-  };
 
   // Los períodos que pidieron: la semana y el trimestre cerrado.
   const aplicar=p=>{
@@ -1483,11 +1476,7 @@ function Reportes(){
                       <div key={i} style={{color:O,fontSize:11,marginTop:4,lineHeight:1.5}}>⚠️ {t}</div>
                     ))}
                   </div>
-                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    <button onClick={()=>setCorrigiendo(p)} style={{...Btn(marcada?O:"transparent",marcada?D:O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
-                    {(p.observaciones||"").includes("posible hoja repetida")&&
-                      <button onClick={()=>borrarRepetida(p)} style={{...Btn("transparent",RE,{fontSize:11,padding:"7px 13px",borderColor:RE+"66"})}}>🗑 Era repetida</button>}
-                  </div>
+                  <button onClick={()=>setCorrigiendo(p)} style={{...Btn(marcada?O:"transparent",marcada?D:O,{fontSize:11,padding:"7px 13px",borderColor:O})}}>✏️ Corregir</button>
                 </div>);
               })}
             </div>
