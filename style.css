@@ -13,23 +13,72 @@ body{background:#111827;font-family:'Montserrat',sans-serif;}
 .barra-tabs::-webkit-scrollbar{display:none;}
 
 /* ── Impresión de reportes ──────────────────────────────────────────────────
-   La app es de fondo oscuro; en papel eso no sirve. Al imprimir se pasa todo a
-   fondo blanco con texto negro, se ocultan botones y navegación, y las barras
-   de los rankings quedan en gris para que se sigan leyendo. */
+   En pantalla la app es oscura; en el papel todo pasa a fondo blanco con texto
+   gris oscuro. El naranja de la marca queda en títulos y líneas; el verde y el
+   rojo solo marcan bien/mal, en tonos oscuros para que se lean también en
+   blanco y negro (y siempre al lado del número).
+   IMPORTANTE: en el diálogo de impresión desactivar "Encabezados y pies de
+   página" del navegador; el pie con el número de página lo pone el reporte.
+   Nada de esto cambia cómo se ve la app en pantalla. */
 .solo-imprimir{display:none;}
 @media print{
-  @page{margin:14mm;}
-  .no-imprimir, .barra-tabs, header, nav, button{display:none !important;}
-  .solo-imprimir{display:block !important;margin-bottom:18px;}
-  .solo-imprimir h1{font-size:17px;margin-bottom:4px;}
-  .solo-imprimir p{font-size:11px;color:#444 !important;}
+  @page{
+    size:A4 portrait;
+    margin:12mm;
+    @bottom-center{
+      content:"Planta Rolleras · Coop El Círculo · página " counter(page);
+      font-family:'Montserrat',sans-serif;font-size:8pt;color:#6b7280;
+    }
+  }
   html,body,#root{height:auto !important;overflow:visible !important;background:#fff !important;}
-  *{background-color:#fff !important;color:#111 !important;border-color:#bbb !important;
-    box-shadow:none !important;}
-  .barra-fondo{background-color:#e5e5e5 !important;}
-  .barra-relleno{background-color:#555 !important;}
-  /* que no se corte una caja en dos hojas */
-  table, .caja-reporte{break-inside:avoid;}
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:'Montserrat',sans-serif;}
+  #root, #root *{background-color:transparent !important;box-shadow:none !important;border-color:#e5e7eb !important;}
+  #root > div{min-height:0 !important;}
+  .no-imprimir, .barra-tabs, header, nav, button, input, select, textarea{display:none !important;}
+  .solo-imprimir{display:block !important;}
+
+  /* Los colores de la app, llevados a tonos que se leen sobre blanco */
+  #root [style*="color: rgb(248, 250, 252)"]{color:#1f2937 !important;}  /* texto claro  -> gris muy oscuro */
+  #root [style*="color: rgb(156, 163, 175)"]{color:#6b7280 !important;}  /* aclaraciones -> gris medio */
+  #root [style*="color: rgb(245, 158, 11)"]{color:#b45309 !important;}   /* naranja de la marca */
+  #root [style*="color: rgb(34, 197, 94)"]{color:#15803d !important;}    /* bien */
+  #root [style*="color: rgb(239, 68, 68)"]{color:#b91c1c !important;}    /* mal */
+  #root [style*="color: rgb(96, 165, 250)"]{color:#1e40af !important;}
+  #root [style*="color: rgb(167, 139, 250)"]{color:#5b21b6 !important;}
+
+  /* Encabezado único */
+  .reporte-encabezado{display:flex !important;align-items:center;gap:12px;
+    padding-bottom:8px;margin-bottom:14px;border-bottom:2px solid #f59e0b !important;}
+  .reporte-logo{width:42px;height:42px;border-radius:8px;}
+  .reporte-encabezado h1{font-size:16pt;color:#1f2937 !important;margin-bottom:2px;}
+  .reporte-empresa{font-size:10pt;font-weight:700;color:#b45309 !important;}
+  .reporte-meta{font-size:9pt;color:#4b5563 !important;margin-top:2px;}
+
+  /* Tarjetas principales: las 5 en una fila */
+  .reporte-tarjetas{display:grid !important;grid-template-columns:repeat(5,1fr) !important;
+    gap:6px !important;margin-bottom:12px !important;}
+  .tarjeta{border:1px solid #e5e7eb !important;border-top:3px solid #f59e0b !important;
+    border-radius:6px !important;padding:8px 9px !important;break-inside:avoid;}
+  .tarjeta-titulo{font-size:7pt !important;}
+  .tarjeta-num{font-size:13pt !important;}
+  .tarjeta-nota{font-size:7pt !important;}
+
+  /* Secciones: ninguna se corta entre dos hojas */
+  .caja-reporte{border:1px solid #e5e7eb !important;border-radius:6px !important;
+    padding:10px 12px !important;margin-bottom:10px !important;break-inside:avoid;}
+  .caja-titulo{font-size:11pt !important;color:#1f2937 !important;
+    border-bottom:1.5px solid #f59e0b !important;padding-bottom:4px;margin-bottom:8px !important;}
+  .reporte-grilla{display:block !important;}
+  .lista-2col{column-count:2;column-gap:20px;}
+  .lista-2col > div, .fila-reporte{break-inside:avoid;}
+
+  /* Barras proporcionales */
+  #root .barra-fondo{background-color:#eef0f3 !important;height:6px !important;}
+  #root .barra-relleno{background-color:#f59e0b !important;}
+  #root .barra-relleno[style*="rgb(239, 68, 68)"]{background-color:#b91c1c !important;}
+  #root .barra-relleno[style*="rgb(34, 197, 94)"]{background-color:#15803d !important;}
+  #root .barra-relleno[style*="rgb(156, 163, 175)"]{background-color:#9ca3af !important;}
+  .barra-impresa{margin-top:4px;}
 }
 select option{background:#1F2937;}
 input,select,textarea{outline:none;}

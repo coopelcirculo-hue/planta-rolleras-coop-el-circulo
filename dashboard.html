@@ -39,7 +39,7 @@ const TABS=[["monitoreo","🟢","Monitoreo","Monitoreo"],
 
 function Header({nombre,tab,setTab,isMobile}){
   const logout=async()=>{await clearSess();window.location.href="index.html";};
-  return(<div style={{background:"#0c1420",borderBottom:"1px solid "+BR,flexShrink:0}}>
+  return(<div className="no-imprimir" style={{background:"#0c1420",borderBottom:"1px solid "+BR,flexShrink:0}}>
     <div style={{padding:isMobile?"12px 14px":"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
       <div style={{minWidth:0}}>
         <div style={{fontFamily:"Orbitron,sans-serif",fontSize:isMobile?11:13,color:O,letterSpacing:1,whiteSpace:"nowrap"}}>🏭 PLANTA ROLLERAS</div>
@@ -105,10 +105,10 @@ function EventoForm({init,maquinas,onSave,onClose}){
 
 // ── Stat card ────────────────────────────────────────────────────────────────
 function StatCard({v,l,s,c}){
-  return(<div style={{background:CA,border:"1px solid "+BR,borderRadius:12,padding:16}}>
-    <div style={{color:GR,fontSize:10,marginBottom:6,letterSpacing:1}}>{l.toUpperCase()}</div>
-    <div style={{fontFamily:"Orbitron,sans-serif",fontSize:20,color:c,fontWeight:700}}>{v}</div>
-    <div style={{color:GR,fontSize:10,marginTop:3}}>{s}</div>
+  return(<div className="tarjeta" style={{background:CA,border:"1px solid "+BR,borderRadius:12,padding:16}}>
+    <div className="tarjeta-titulo" style={{color:GR,fontSize:10,marginBottom:6,letterSpacing:1}}>{l.toUpperCase()}</div>
+    <div className="tarjeta-num" style={{fontFamily:"Orbitron,sans-serif",fontSize:20,color:c,fontWeight:700}}>{v}</div>
+    <div className="tarjeta-nota" style={{color:GR,fontSize:10,marginTop:3}}>{s}</div>
   </div>);
 }
 
@@ -1240,9 +1240,20 @@ function Reportes(){
     ? bobinas.filter(b=>String(b.n_bobina).toLowerCase().includes(buscar.trim().toLowerCase()))
     : [];
 
-  const Caja=({titulo,children})=>(
-    <div className="caja-reporte" style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:18}}>
-      <div style={{color:W,fontWeight:700,fontSize:13,marginBottom:14}}>{titulo}</div>
+  // Al guardar como PDF el archivo sale con el período y la máquina en el
+  // nombre, así cada reporte queda guardado por fecha y no se confunde con otro.
+  const maquinaTexto=rollera==="todas"?"Todas":tituloMaquina(rollera);
+  const imprimir=()=>{
+    const titulo=document.title;
+    document.title="Reporte Rolleras "+fdate(desde).replace(/\//g,"-")+" al "+fdate(hasta).replace(/\//g,"-")+" - "+maquinaTexto;
+    const volver=()=>{ document.title=titulo; window.removeEventListener("afterprint",volver); };
+    window.addEventListener("afterprint",volver);
+    window.print();
+  };
+
+  const Caja=({titulo,children,clase})=>(
+    <div className={"caja-reporte"+(clase?" "+clase:"")} style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:18}}>
+      <div className="caja-titulo" style={{color:W,fontWeight:700,fontSize:13,marginBottom:14}}>{titulo}</div>
       {children}
     </div>
   );
@@ -1252,20 +1263,24 @@ function Reportes(){
       {[["semana","Semana"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
         <button key={id} onClick={()=>aplicar(id)} style={{...Btn(periodo===id?O:"transparent",periodo===id?D:GR,{padding:"7px 16px",fontSize:12})}}>{lbl}</button>
       ))}
-      <button onClick={()=>window.print()} style={{...Btn("transparent",W,{padding:"7px 16px",fontSize:12,marginLeft:"auto"})}}>🖨️ Imprimir</button>
+      <button onClick={imprimir} title={"En el diálogo de impresión desactivá \"Encabezados y pies de página\": el pie ya lo pone el reporte"} style={{...Btn("transparent",W,{padding:"7px 16px",fontSize:12,marginLeft:"auto"})}}>🖨️ Imprimir</button>
     </div>
 
     {/* Encabezado que solo sale en el papel */}
-    <div className="solo-imprimir">
-      <h1>Reporte de producción — Planta Rolleras</h1>
-      <p>Coop El Círculo · del {fdate(desde)} al {fdate(hasta)} · emitido el {fdate(hoyIso())}</p>
+    <div className="solo-imprimir reporte-encabezado">
+      <img src="icon-192.png" alt="" className="reporte-logo"/>
+      <div>
+        <h1>Reporte de producción — Planta Rolleras</h1>
+        <p className="reporte-empresa">Coop El Círculo</p>
+        <p className="reporte-meta">Período: del {fdate(desde)} al {fdate(hasta)} · Máquina: {maquinaTexto} · Emitido el {fdate(hoyIso())}</p>
+      </div>
     </div>
-    {periodo==="rango"&&<div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+    {periodo==="rango"&&<div className="no-imprimir" style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
       <div><div style={{color:GR,fontSize:10,marginBottom:4}}>DESDE</div><input type="date" value={desde} onChange={e=>setDesde(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>
       <div><div style={{color:GR,fontSize:10,marginBottom:4}}>HASTA</div><input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{...inp,width:150,fontSize:12,padding:"7px 10px"}}/></div>
     </div>}
 
-    {rolleras.length>1&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+    {rolleras.length>1&&<div className="no-imprimir" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
       <span style={{color:GR,fontSize:11,marginRight:4}}>MÁQUINA:</span>
       {["todas",...rolleras].map(r=>(
         <button key={r} onClick={()=>setRollera(r)} style={{...Btn(rollera===r?PU:"transparent",rollera===r?D:GR,{padding:"6px 14px",fontSize:12,borderColor:rollera===r?PU:BR})}}>
@@ -1274,7 +1289,7 @@ function Reportes(){
       ))}
     </div>}
 
-    <div style={{color:GR,fontSize:11,marginBottom:14}}>
+    <div className="no-imprimir" style={{color:GR,fontSize:11,marginBottom:14}}>
       {fdate(desde)} al {fdate(hasta)}
       {rollera!=="todas"&&<span style={{color:PU}}> · solo {tituloMaquina(rollera)}</span>}
     </div>
@@ -1285,7 +1300,7 @@ function Reportes(){
         <p>No hay datos en este período.</p>
       </div>
      ):(<>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:18}}>
+      <div className="reporte-tarjetas" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:18}}>
         <StatCard v={fnum(kilos)} l="Kilos" s={producciones.length+" turnos"} c={O}/>
         <StatCard v={bobinas.length} l="Bobinas" s={bobinas.length?fnum(Math.round(kilos/bobinas.length))+" kg c/u":"—"} c={W}/>
         <StatCard v={mal.length} l="Con error" s={pctError+(sinEstado?" · "+sinEstado+" sin marcar":"")} c={mal.length?RE:GN}/>
@@ -1346,19 +1361,21 @@ function Reportes(){
 
           <div style={{color:GR,fontSize:11,marginBottom:8}}>LOS TURNOS QUE MÁS TIRARON</div>
           {peoresTurnos.map((p,i)=>(
-            <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,
-                 padding:"7px 0",borderBottom:i<peoresTurnos.length-1?"1px solid "+BR:"none"}}>
-              <span style={{color:W}}>{tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}</span>
-              <span style={{color:p.pct>3?RE:GR,fontWeight:700,whiteSpace:"nowrap"}}>{fnum(p.scrap)} kg · {p.pct.toFixed(1)}%</span>
+            <div key={i} className="fila-reporte" style={{padding:"7px 0",borderBottom:i<peoresTurnos.length-1?"1px solid "+BR:"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}>
+                <span style={{color:W}}>{tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}</span>
+                <span style={{color:p.pct>3?RE:GR,fontWeight:700,whiteSpace:"nowrap"}}>{fnum(p.scrap)} kg · {p.pct.toFixed(1)}%</span>
+              </div>
+              <div className="solo-imprimir barra-impresa"><Barra valor={p.scrap} max={peoresTurnos[0].scrap} color={p.pct>3?RE:GR}/></div>
             </div>
           ))}
         </>)}
       </Caja>
       <div style={{height:14}}/>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14,marginBottom:14}}>
+      <div className="reporte-grilla" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14,marginBottom:14}}>
         <Caja titulo="⚠️ Operarios con más errores">
-          {ops.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:ops.map((o,i)=>(
+          {ops.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:<div className="lista-2col">{ops.map((o,i)=>(
             <div key={i} style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:W,fontWeight:600}}>{o.nombre}</span>
@@ -1369,11 +1386,11 @@ function Reportes(){
                 <span style={{color:GR,fontSize:10,minWidth:44,textAlign:"right"}}>{o.total?(100*o.mal/o.total).toFixed(0):0}%</span>
               </div>
             </div>
-          ))}
+          ))}</div>}
         </Caja>
 
         <Caja titulo="🔧 Defectos más comunes">
-          {defs.length===0?<p style={{color:GR,fontSize:12}}>Sin defectos registrados.</p>:defs.map((d,i)=>(
+          {defs.length===0?<p style={{color:GR,fontSize:12}}>Sin defectos registrados.</p>:<div className="lista-2col">{defs.map((d,i)=>(
             <div key={i} style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:W}}>{i+1}. {d.nombre}</span>
@@ -1381,7 +1398,7 @@ function Reportes(){
               </div>
               <Barra valor={d.cant} max={maxDef} color={O}/>
             </div>
-          ))}
+          ))}</div>}
         </Caja>
 
         <Caja titulo="🏭 Kilos por rollera">
@@ -1399,7 +1416,7 @@ function Reportes(){
           ))}
         </Caja>
 
-        <Caja titulo="🔎 Buscar bobina">
+        <Caja titulo="🔎 Buscar bobina" clase="no-imprimir">
           <p style={{color:GR,fontSize:11,marginBottom:10,lineHeight:1.5}}>
             Si una bobina salió con una falla grave, buscá su número para saber quién la hizo
             y de qué máquina de origen vino.
