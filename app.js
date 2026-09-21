@@ -394,6 +394,34 @@ const dbRollos = {
   },
 };
 
+// ── Reportes guardados (SQL 19) ──────────────────────────────────────────────
+// Copia exacta de cada reporte impreso, para volver a verlo por fecha.
+const FALTA_SQL19 = "Falta correr el SQL 19 (reportes guardados) en Supabase.";
+const dbReportes = {
+  async guardar(r) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(r.desde+"|"+r.hasta+"|"+r.maquina+"|"+r.html));
+    const huella = [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,"0")).join("");
+    const {error} = await SB.from("reportes_guardados").insert({
+      empresa: EMPRESA, desde: r.desde, hasta: r.hasta, maquina: r.maquina,
+      html: r.html, huella, emitido_por: r.emitidoPor||""
+    });
+    if(!error) return {ok:true};
+    if(error.code==="23505") return {ok:true, yaEstaba:true};   // mismo reporte, ya guardado
+    return {ok:false, detalle: /reportes_guardados|42P01/.test(error.message+error.code) ? FALTA_SQL19 : error.message};
+  },
+  async listar() {
+    const {data,error} = await SB.from("reportes_guardados")
+      .select("id,desde,hasta,maquina,emitido_por,emitido_en").eq("empresa",EMPRESA)
+      .order("emitido_en",{ascending:false}).limit(300);
+    if(error) return {ok:false, detalle: /reportes_guardados|42P01/.test(error.message+error.code) ? FALTA_SQL19 : error.message};
+    return {ok:true, lista:data||[]};
+  },
+  async html(id) {
+    const {data,error} = await SB.from("reportes_guardados").select("html").eq("id",id).single();
+    return error ? null : data.html;
+  },
+};
+
 // ── Quitar una nota de revisión ya resuelta ──────────────────────────────────
 // Las observaciones son "texto de la hoja | ⚠ REVISAR: motivo 1 | motivo 2".
 // Saca el motivo que coincide con `patron` y deja el resto igual; si el que se
