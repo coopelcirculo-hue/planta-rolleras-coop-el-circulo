@@ -68,9 +68,30 @@ body{background:#111827;font-family:'Montserrat',sans-serif;}
     padding:10px 12px !important;margin-bottom:10px !important;break-inside:avoid;}
   .caja-titulo{font-size:11pt !important;color:#1f2937 !important;
     border-bottom:1.5px solid #f59e0b !important;padding-bottom:4px;margin-bottom:8px !important;}
-  .reporte-grilla{display:block !important;}
-  .lista-2col{column-count:2;column-gap:20px;}
-  .lista-2col > div, .fila-reporte{break-inside:avoid;}
+  /* Hoja 1: resumen, millares y scrap juntos. Hoja 2: los gráficos. */
+  .reporte-grilla{display:block !important;break-before:page;}
+  .scrap-resumen{grid-template-columns:repeat(4,1fr) !important;gap:6px !important;margin-bottom:10px !important;}
+  .scrap-resumen > div{border:1px solid #e5e7eb !important;padding:6px 8px !important;}
+  .fila-reporte{padding:3px 0 !important;break-inside:avoid;}
+
+  /* Gráficos de barras del papel (operarios y defectos) */
+  .graf-leyenda{display:flex !important;align-items:center;gap:4px;flex-wrap:wrap;
+    font-size:7.5pt;color:#4b5563 !important;margin-bottom:6px;}
+  .graf-muestra{display:inline-block;width:9px;height:9px;border-radius:2px;margin-left:6px;}
+  .graf-muestra:first-child{margin-left:0;}
+  .graf-nota{margin-left:auto;font-style:italic;}
+  .graf-fila{display:grid;grid-template-columns:30mm 1fr 24mm;align-items:center;gap:6px;
+    font-size:8.5pt;padding:2px 0;border-bottom:0.5px solid #f1f2f4 !important;break-inside:avoid;}
+  .graf-nombre{color:#1f2937;line-height:1.2;}
+  .graf-valor{text-align:right;font-weight:700;color:#1f2937;white-space:nowrap;font-variant-numeric:tabular-nums;}
+  #root .graf-pista{display:block;height:10px;background-color:#f3f4f6 !important;border-radius:2px;overflow:hidden;}
+  #root .graf-total{display:block;height:100%;background-color:#86c79a !important;}
+  #root .graf-mal-parte, #root .graf-mal{display:block;height:100%;background-color:#b91c1c !important;}
+  #root .graf-bien{background-color:#86c79a !important;}
+  #root .graf-mal{display:inline-block;height:9px;}
+  #root .graf-def{display:block;height:100%;background-color:#d97706 !important;}
+  .graf-2col{column-count:2;column-gap:8mm;}
+  .graf-2col .graf-fila{grid-template-columns:36mm 1fr 7mm;}
 
   /* Barras proporcionales */
   #root .barra-fondo{background-color:#eef0f3 !important;height:6px !important;}

@@ -1251,6 +1251,38 @@ function Reportes(){
     window.print();
   };
 
+  // Graficos para el papel: filas compactas con barra, para que cada caja
+  // entre entera en la hoja. Usan los mismos datos que la lista de la pantalla.
+  const GraficoOperarios=({ops})=>{
+    const tope=Math.max(1,...ops.map(o=>o.total));
+    return(<div className="solo-imprimir graf">
+      <div className="graf-leyenda">
+        <span className="graf-muestra graf-bien"/>bien
+        <span className="graf-muestra graf-mal"/>con error
+        <span className="graf-nota">largo de la barra = bobinas que hizo cada operario</span>
+      </div>
+      {ops.map((o,i)=>(
+        <div key={i} className="graf-fila">
+          <span className="graf-nombre">{o.nombre}</span>
+          <span className="graf-pista"><span className="graf-total" style={{width:(100*o.total/tope)+"%"}}>
+            <span className="graf-mal-parte" style={{width:(o.total?100*o.mal/o.total:0)+"%"}}/></span></span>
+          <span className="graf-valor">{o.mal} de {o.total} · {o.total?(100*o.mal/o.total).toFixed(0):0}%</span>
+        </div>
+      ))}
+    </div>);
+  };
+  const GraficoDefectos=({defs})=>(
+    <div className="solo-imprimir graf graf-2col">
+      {defs.map((d,i)=>(
+        <div key={i} className="graf-fila">
+          <span className="graf-nombre">{i+1}. {d.nombre}</span>
+          <span className="graf-pista"><span className="graf-def" style={{width:(100*d.cant/(defs[0].cant||1))+"%"}}/></span>
+          <span className="graf-valor">{d.cant}</span>
+        </div>
+      ))}
+    </div>
+  );
+
   const Caja=({titulo,children,clase})=>(
     <div className={"caja-reporte"+(clase?" "+clase:"")} style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:18}}>
       <div className="caja-titulo" style={{color:W,fontWeight:700,fontSize:13,marginBottom:14}}>{titulo}</div>
@@ -1326,7 +1358,7 @@ function Reportes(){
 
       <Caja titulo="♻️ Scrap: dónde y cuándo se tira más">
         {se+sr===0?<p style={{color:GR,fontSize:12}}>No hay scrap cargado en este período.</p>:(<>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:16}}>
+          <div className="scrap-resumen" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:16}}>
             <div style={{background:D,borderRadius:8,padding:10}}>
               <div style={{color:GR,fontSize:9,letterSpacing:1}}>EMPALME</div>
               <div style={{color:BL,fontWeight:700,fontSize:15}}>{fnum(se)} kg</div>
@@ -1375,7 +1407,7 @@ function Reportes(){
 
       <div className="reporte-grilla" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14,marginBottom:14}}>
         <Caja titulo="⚠️ Operarios con más errores">
-          {ops.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:<div className="lista-2col">{ops.map((o,i)=>(
+          {ops.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:<><div className="lista-2col no-imprimir">{ops.map((o,i)=>(
             <div key={i} style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:W,fontWeight:600}}>{o.nombre}</span>
@@ -1386,11 +1418,12 @@ function Reportes(){
                 <span style={{color:GR,fontSize:10,minWidth:44,textAlign:"right"}}>{o.total?(100*o.mal/o.total).toFixed(0):0}%</span>
               </div>
             </div>
-          ))}</div>}
+          ))}</div>
+          <GraficoOperarios ops={ops}/></>}
         </Caja>
 
         <Caja titulo="🔧 Defectos más comunes">
-          {defs.length===0?<p style={{color:GR,fontSize:12}}>Sin defectos registrados.</p>:<div className="lista-2col">{defs.map((d,i)=>(
+          {defs.length===0?<p style={{color:GR,fontSize:12}}>Sin defectos registrados.</p>:<><div className="lista-2col no-imprimir">{defs.map((d,i)=>(
             <div key={i} style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:W}}>{i+1}. {d.nombre}</span>
@@ -1398,7 +1431,8 @@ function Reportes(){
               </div>
               <Barra valor={d.cant} max={maxDef} color={O}/>
             </div>
-          ))}</div>}
+          ))}</div>
+          <GraficoDefectos defs={defs}/></>}
         </Caja>
 
         <Caja titulo="🏭 Kilos por rollera">
