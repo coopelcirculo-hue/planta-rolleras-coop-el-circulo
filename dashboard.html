@@ -1013,13 +1013,6 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
     setMsg({t:"ok",x:"✓ Hoja corregida"}); onCambio();
   };
 
-  const borrarHoja=async()=>{
-    if(!confirm("¿Borrar toda la hoja? Se borran también sus "+(bobinas?bobinas.length:"")+" bobinas. No se puede deshacer."))return;
-    const r=await db.borrarHoja(hoja.id);
-    if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
-    onCambio(); onCerrar();
-  };
-
   const guardarBobina=async b=>{
     const r=await db.actualizarBobina(b.id,{n:b.n_bobina,peso:b.peso,iniciales:b.operario_bobina,estado:b.estado});
     if(!r.ok){ setMsg({t:"error",x:r.detalle}); return; }
@@ -1054,8 +1047,8 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
     <Field label="Observaciones"><input style={inp} value={f.observaciones} onChange={e=>s("observaciones",e.target.value)}/></Field>
 
     <div style={{display:"flex",gap:8,marginBottom:16}}>
+      {/* Cada hoja es un turno unico: desde la app se corrige, pero no se borra. */}
       <button onClick={guardarHoja} disabled={guardando} style={{...Btn(O,D,{flex:1,fontSize:12})}}>{guardando?"Guardando...":"Guardar cambios de la hoja"}</button>
-      <button onClick={borrarHoja} style={{...Btn("transparent",RE,{fontSize:12,borderColor:RE+"66"})}}>🗑 Borrar hoja</button>
     </div>
 
     <div style={{color:W,fontSize:12,fontWeight:700,marginBottom:8}}>Bobinas</div>
