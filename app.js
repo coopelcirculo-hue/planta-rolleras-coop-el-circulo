@@ -14,6 +14,28 @@ const EMPRESA = "Coop El Circulo";
 // Si en n8n se reimporta el workflow, este id cambia y hay que actualizarlo.
 const N8N_FORM_URL = "https://asd-n8n.8mjdss.easypanel.host/form/f4d44909-5d6d-466c-b13e-9017ae9ac21e";
 
+// Achica la foto de la hoja antes de subirla: el lado más largo queda en 2000 px
+// y se guarda como JPEG. La letra se sigue leyendo igual (la IA trabaja con
+// menos resolución todavía) y la subida pasa de varios MB a menos de 1.
+// Si el navegador no puede abrir el formato (por ejemplo HEIC viejo de iPhone)
+// se manda la original, como antes.
+const achicarFoto = async (archivo, lado=2000, calidad=0.85) => {
+  try {
+    if(!/^image\//.test(archivo.type||"")) return archivo;
+    const bmp = await createImageBitmap(archivo);
+    const esc = Math.min(1, lado/Math.max(bmp.width, bmp.height));
+    if(esc===1 && archivo.size < 1.5*1024*1024){ bmp.close(); return archivo; }
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width*esc); c.height = Math.round(bmp.height*esc);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    bmp.close();
+    const blob = await new Promise(res=>c.toBlob(res, "image/jpeg", calidad));
+    if(!blob || blob.size >= archivo.size) return archivo;
+    const nombre = (archivo.name||"hoja").replace(/\.[^.]+$/,"")+".jpg";
+    return new File([blob], nombre, {type:"image/jpeg"});
+  } catch(e) { return archivo; }
+};
+
 // ── Colores ───────────────────────────────────────────────────────────────────
 const O="#f59e0b",D="#111827",CA="#1a2232",CB="#1F2937",BR="#2d3748",GR="#9CA3AF",W="#F8FAFC",RE="#ef4444",GN="#22c55e",BL="#60a5fa",PU="#a78bfa";
 
@@ -164,20 +186,31 @@ const db = {
   // field-0 la foto, field-1 rollera, field-2 planta, field-3 fecha y field-4 turno
   // (solo si se forzaron a mano), field-5 el código de esta carga.
   // Con ese código la app después pregunta qué pasó con ESTA foto.
+  //
+  // La foto se achica antes de mandarla: la de una tablet pesa entre 5 y 10 MB y,
+  // con señal floja, la subida se corta por la mitad. A n8n le llega el pedido
+  // vacío (sin foto y sin ningún dato) y la hoja se pierde sin aviso. Achicada
+  // pesa menos de 1 MB, sube en segundos y la IA la lee igual.
   async subirFoto(archivo, maquina, fecha, turno, cargaId) {
+    if(!archivo || !archivo.size) return {ok:false, detalle:"La foto quedó vacía (0 KB). Sacala de nuevo."};
+    const foto = await achicarFoto(archivo);
     const fd = new FormData();
-    fd.append("field-0", archivo, archivo.name || "hoja.jpg");
+    fd.append("field-0", foto, foto.name || "hoja.jpg");
     fd.append("field-1", maquina || "");
     fd.append("field-2", "Rolleras");
     fd.append("field-3", fecha || "");
     fd.append("field-4", turno || "");
     fd.append("field-5", cargaId || "");
-    try {
-      const r = await fetch(N8N_FORM_URL, { method:"POST", body: fd });
-      if(!r.ok) return {ok:false, detalle:"n8n respondió "+r.status+". ¿El workflow está activo?"};
-      return {ok:true};
-    } catch(e) {
-      return {ok:false, detalle:"No se pudo conectar con n8n: "+e.message};
+    const kb = Math.round(foto.size/1024);
+    // Dos intentos: si el primero se corta por la señal, reintenta solo.
+    for(let intento=1; intento<=2; intento++){
+      try {
+        const r = await fetch(N8N_FORM_URL, { method:"POST", body: fd });
+        if(r.ok) return {ok:true, kb};
+        if(intento===2) return {ok:false, detalle:"n8n respondió "+r.status+". ¿El workflow está activo?"};
+      } catch(e) {
+        if(intento===2) return {ok:false, detalle:"No se pudo conectar con n8n: "+e.message};
+      }
     }
   },
 

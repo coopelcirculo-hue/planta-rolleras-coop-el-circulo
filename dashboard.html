@@ -638,7 +638,7 @@ function SubirFoto({maquinas,onListo}){
 
   const enviar=async()=>{
     if(!archivo) return;
-    setEstado({tipo:"proceso",texto:"Subiendo la foto..."});
+    setEstado({tipo:"proceso",texto:"Achicando y subiendo la foto..."});
     // Código único de esta foto: con él se pregunta después qué pasó con ELLA,
     // en vez de adivinar mirando si apareció alguna hoja nueva.
     const cargaId="c"+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -647,7 +647,7 @@ function SubirFoto({maquinas,onListo}){
     const r=await db.subirFoto(archivo,maquina,fecha,turno,cargaId);
     if(!r.ok){ setEstado({tipo:"error",texto:r.detalle}); return; }
 
-    setEstado({tipo:"proceso",texto:"Leyendo la hoja con IA... Si la IA está saturada puede tardar un par de minutos. No la vuelvas a subir."});
+    setEstado({tipo:"proceso",texto:"Foto subida"+(r.kb?" ("+r.kb+" KB)":"")+". Leyendo la hoja con IA... Si la IA está saturada puede tardar un par de minutos. No la vuelvas a subir."});
     const terminar=(msg,limpiar)=>{
       setEstado(msg);
       setVersion(v=>v+1);
@@ -658,7 +658,7 @@ function SubirFoto({maquinas,onListo}){
         if(onListo) onListo();
       }
     };
-    for(let i=0;i<60;i++){   // hasta 4 minutos
+    for(let i=0;i<120;i++){   // hasta 8 minutos
       await new Promise(res=>setTimeout(res,4000));
       const e=await db.estadoCarga(cargaId);
       if(e.sinSoporte){
@@ -670,7 +670,7 @@ function SubirFoto({maquinas,onListo}){
       }
       if(e.dato){ terminar(mensajeCarga(e.dato), e.dato.resultado!=="fallida"); return; }
     }
-    terminar({tipo:"aviso",texto:"Sigue procesando. NO la vuelvas a subir: el resultado va a aparecer en \"Últimas cargas\" en unos minutos."},false);
+    terminar({tipo:"aviso",texto:"Pasaron 8 minutos y no se registró nada: lo más probable es que la subida se haya cortado y la hoja no haya llegado.\nMirá \"Últimas cargas\": si la hoja no aparece ahí, volvé a subirla."},false);
   };
 
   const procesando = estado?.tipo==="proceso";
