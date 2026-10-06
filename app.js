@@ -460,6 +460,85 @@ const dbRollos = {
   },
 };
 
+// ── Catálogo de productos por cliente (SQL 21) ──────────────────────────────
+// Cada producto se carga una vez y de ahí sale la medida escrita siempre igual,
+// los rollos por bulto, las bolsas por rollo y el peso teórico de la bolsa.
+const FALTA_SQL21 = "Falta correr el SQL 21 (catálogo de productos) en Supabase.";
+const DENSIDAD = {PEBD:0.92, PEAD:0.95};
+
+// Peso teórico de una bolsa, en gramos: dos caras de film del ancho y largo de
+// la bolsa, con el espesor en micras. Sirve para comparar contra lo que pesa de
+// verdad y darse cuenta si se está yendo de calibre.
+const pesoTeoricoBolsa = (ancho, largo, micras, material) => {
+  const a=Number(ancho)||0, l=Number(largo)||0, m=Number(micras)||0;
+  if(!a || !l || !m) return null;
+  return +(a * l * 2 * m / 10000 * (DENSIDAD[material]||0.92)).toFixed(2);
+};
+
+// El texto de la medida, siempre escrito igual: "45x60x20x24"
+const textoMedida = p => [p.ancho,p.largo,p.bolsasPorRollo,p.rollosPorBulto]
+  .filter(x=>x!=="" && x!=null).join("x");
+
+const dbProductos = {
+  async listar() {
+    const {data,error} = await SB.from("productos").select("*").eq("empresa",EMPRESA)
+      .order("cliente").order("medida").limit(500);
+    if(error) return {ok:false, detalle: /productos|42P01/.test(error.message+error.code) ? FALTA_SQL21 : error.message};
+    return {ok:true, lista:data||[]};
+  },
+  async guardar(p) {
+    const fila = {
+      empresa: EMPRESA,
+      cliente: (p.cliente||"").trim().toUpperCase(),
+      medida: textoMedida(p),
+      ancho_cm: Number(p.ancho)||null, largo_cm: Number(p.largo)||null,
+      bolsas_por_rollo: Number(p.bolsasPorRollo)||null,
+      rollos_por_bulto: Number(p.rollosPorBulto)||null,
+      micras: Number(p.micras)||null,
+      material: p.material||"PEBD",
+      peso_bolsa_g: p.pesoBolsa!=="" && p.pesoBolsa!=null ? Number(p.pesoBolsa)
+                    : pesoTeoricoBolsa(p.ancho,p.largo,p.micras,p.material),
+      notas: p.notas||"", activo: p.activo!==false, creado_por: p.creadoPor||""
+    };
+    const {data,error} = p.id
+      ? await SB.from("productos").update(fila).eq("id",p.id).select()
+      : await SB.from("productos").insert(fila).select();
+    if(error) return {ok:false, detalle: error.code==="23505"
+      ? "Ese cliente ya tiene cargada esa misma medida."
+      : /productos|42P01/.test(error.message+error.code) ? FALTA_SQL21 : error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+  async borrar(id) {
+    const {data,error} = await SB.from("productos").delete().eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+
+  // Las medidas que ya se vienen usando en las hojas y en los rollos, para
+  // cargar el catálogo sin tener que escribirlas de nuevo. De "45x60x20x24"
+  // salen ancho, largo, bolsas por rollo y rollos por bulto.
+  async medidasUsadas() {
+    const desde = haceDiasIso(180);
+    const [p,r] = await Promise.all([
+      SB.from("v_producciones").select("medida").eq("empresa",EMPRESA).gte("fecha",desde).limit(2000),
+      SB.from("v_rollos").select("medida").eq("empresa",EMPRESA).gte("fecha",desde).limit(2000),
+    ]);
+    const cuenta = {};
+    for (const x of [...(p.data||[]), ...(r.data||[])]) {
+      const n = numerosMedida(x.medida);
+      if (n.length < 4) continue;                       // sin los 4 números no sirve
+      const clave = n.slice(0,4).join("x");
+      cuenta[clave] = (cuenta[clave]||0) + 1;
+    }
+    return Object.entries(cuenta).map(([medida,veces])=>{
+      const n = medida.split("x").map(Number);
+      return {medida, veces, ancho:n[0], largo:n[1], bolsasPorRollo:n[2], rollosPorBulto:n[3]};
+    }).sort((a,b)=>b.veces-a.veces);
+  },
+};
+
 // ── Reportes guardados (SQL 19) ──────────────────────────────────────────────
 // Copia exacta de cada reporte impreso, para volver a verlo por fecha.
 const FALTA_SQL19 = "Falta correr el SQL 19 (reportes guardados) en Supabase.";

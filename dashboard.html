@@ -211,6 +211,7 @@ function duracion(desde,hasta){
 
 function CambiarEstadoForm({init,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  const {productos}=useProductos();
   const [guardando,setGuardando]=useState(false);
   const valido = f.estado==="produciendo" ? f.medida.trim() : true;
   const guardar=async()=>{ setGuardando(true); await onSave(f); setGuardando(false); };
@@ -222,6 +223,10 @@ function CambiarEstadoForm({init,onSave,onClose}){
     </Field>
 
     {f.estado==="produciendo"&&<>
+      {productos.length>0&&<Field label="Producto (cliente y medida)">
+        <SelectorProducto productos={productos} valor={f.productoId}
+          onElegir={p=>p?setF(x=>({...x,productoId:p.id,medida:p.medida,presentacion:p.cliente})):setF(x=>({...x,productoId:""}))}/>
+      </Field>}
       <Field label="Medida">
         <input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="Ej: 45x60x20" autoFocus/>
       </Field>
@@ -310,6 +315,7 @@ function NuevaMaquinaForm({onSave,onClose}){
 function RollosForm({maquinas,init,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const [guardando,setGuardando]=useState(false);
+  const {productos}=useProductos();
   // Si ese turno ya tiene rollos cargados se avisa, para no contarlos dos veces.
   const [yaHay,setYaHay]=useState([]);
   useEffect(()=>{
@@ -347,6 +353,12 @@ function RollosForm({maquinas,init,onSave,onClose}){
         </div>
       </Field>
     </div>
+    {productos.length>0&&<Field label="Producto (cliente y medida)">
+      <SelectorProducto productos={productos} valor={f.productoId}
+        onElegir={p=>p?setF(x=>({...x,productoId:p.id,medida:p.medida,
+          rpb:String(p.rollos_por_bulto||""),bpr:String(p.bolsas_por_rollo||"")}))
+          :setF(x=>({...x,productoId:""}))}/>
+    </Field>}
     <Field label="Medida">
       <input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="Ej: 45x60x20x24"/>
     </Field>
@@ -454,6 +466,203 @@ function RollosTurno({maquinas,perfil}){
   </div>);
 }
 
+// ── Catálogo de productos por cliente ───────────────────────────────────────
+// Cada producto se carga una vez (cliente, medida, bolsas por rollo, rollos por
+// bulto y micras) y después se elige de una lista en vez de escribirlo.
+function useProductos(){
+  const [productos,setProductos]=useState([]);
+  const [falta,setFalta]=useState(false);
+  const cargar=async()=>{
+    const r=await dbProductos.listar();
+    if(r.ok) setProductos(r.lista.filter(p=>p.activo!==false)); else setFalta(true);
+  };
+  useEffect(()=>{ cargar(); },[]);
+  return {productos,falta,recargar:cargar};
+}
+
+function SelectorProducto({productos,valor,onElegir,vacio}){
+  const porCliente={};
+  productos.forEach(p=>(porCliente[p.cliente]=porCliente[p.cliente]||[]).push(p));
+  return(<select style={inp} value={valor||""}
+      onChange={e=>onElegir(productos.find(p=>String(p.id)===e.target.value)||null)}>
+    <option value="">{vacio||"Elegir producto..."}</option>
+    {Object.entries(porCliente).sort().map(([c,ps])=>(
+      <optgroup key={c} label={c}>
+        {ps.map(p=><option key={p.id} value={p.id}>{p.medida}{p.micras?" · "+p.micras+" µ":""}</option>)}
+      </optgroup>
+    ))}
+  </select>);
+}
+
+function ProductoForm({init,clientes,onSave,onClose}){
+  const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  const [guardando,setGuardando]=useState(false);
+  const teorico=pesoTeoricoBolsa(f.ancho,f.largo,f.micras,f.material);
+  const peso=f.pesoBolsa!==""&&f.pesoBolsa!=null?Number(f.pesoBolsa):teorico;
+  const medida=textoMedida(f);
+  const valido=f.cliente.trim()&&f.ancho&&f.largo&&f.bolsasPorRollo&&f.rollosPorBulto;
+  const guardar=async()=>{ setGuardando(true); await onSave(f); setGuardando(false); };
+  return(<>
+    <Field label="Cliente">
+      <input style={inp} value={f.cliente} onChange={e=>s("cliente",e.target.value)}
+        list="clientes-lista" placeholder="Ej: OLIVETO" autoFocus/>
+      <datalist id="clientes-lista">{clientes.map(c=><option key={c} value={c}/>)}</datalist>
+    </Field>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <Field label="Ancho (cm)"><input type="number" step="0.5" style={inp} value={f.ancho} onChange={e=>s("ancho",e.target.value)} placeholder="45"/></Field>
+      <Field label="Largo (cm)"><input type="number" step="0.5" style={inp} value={f.largo} onChange={e=>s("largo",e.target.value)} placeholder="60"/></Field>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <Field label="Bolsas por rollo"><input type="number" style={inp} value={f.bolsasPorRollo} onChange={e=>s("bolsasPorRollo",e.target.value)} placeholder="20"/></Field>
+      <Field label="Rollos por bulto"><input type="number" style={inp} value={f.rollosPorBulto} onChange={e=>s("rollosPorBulto",e.target.value)} placeholder="24"/></Field>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <Field label="Micras (espesor)"><input type="number" step="0.5" style={inp} value={f.micras} onChange={e=>s("micras",e.target.value)} placeholder="25"/></Field>
+      <Field label="Material">
+        <div style={{display:"flex",gap:6}}>
+          {["PEBD","PEAD"].map(m=>(
+            <button key={m} onClick={()=>s("material",m)} style={{...Btn(f.material===m?O:"transparent",f.material===m?D:GR,{flex:1,fontSize:12})}}>{m}</button>))}
+        </div>
+      </Field>
+    </div>
+    <Field label="Peso por bolsa (gramos) — se calcula solo, se puede corregir">
+      <input type="number" step="0.01" style={inp} value={f.pesoBolsa} onChange={e=>s("pesoBolsa",e.target.value)}
+        placeholder={teorico?String(teorico)+" (calculado)":"primero cargá medida y micras"}/>
+    </Field>
+    <Field label="Notas (opcional)"><input style={inp} value={f.notas} onChange={e=>s("notas",e.target.value)} placeholder="Ej: va a granel"/></Field>
+
+    <div style={{background:D,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:12,lineHeight:1.7}}>
+      <div style={{color:GR}}>Queda guardado como <span style={{color:O,fontWeight:700}}>{medida||"—"}</span></div>
+      {peso?<div style={{color:GR}}>Cada bolsa pesa <span style={{color:W,fontWeight:700}}>{peso} g</span> ·
+        un millar de bolsas son <span style={{color:GN,fontWeight:700}}>{peso} kg</span> de material</div>
+        :<div style={{color:GR}}>Cargá micras para saber el peso de la bolsa.</div>}
+      {f.bolsasPorRollo&&f.rollosPorBulto?<div style={{color:GR}}>Un bulto son {fnum(Number(f.bolsasPorRollo)*Number(f.rollosPorBulto))} bolsas
+        {peso?" · "+fkg(Number(f.bolsasPorRollo)*Number(f.rollosPorBulto)*peso/1000)+" kg":""}</div>:null}
+    </div>
+
+    <div style={{display:"flex",gap:10}}>
+      <button onClick={onClose} style={{...Btn("transparent",GR),flex:1}}>Cancelar</button>
+      <button onClick={guardar} disabled={!valido||guardando} style={{...Btn(O,D,{opacity:valido&&!guardando?1:0.5}),flex:1}}>{guardando?"Guardando...":"Guardar"}</button>
+    </div>
+  </>);
+}
+
+function Productos({perfil}){
+  const [lista,setLista]=useState(undefined);  // undefined = cargando, null = falta el SQL
+  const [form,setForm]=useState(null);
+  const [error,setError]=useState("");
+  // Medidas que ya se usaron en las hojas: se cargan de un toque.
+  const [sugeridas,setSugeridas]=useState([]);
+  useEffect(()=>{ (async()=>setSugeridas(await dbProductos.medidasUsadas()))(); },[]);
+  const cargar=async()=>{
+    const r=await dbProductos.listar();
+    if(!r.ok){ setError(r.detalle); setLista(null); return; }
+    setError(""); setLista(r.lista);
+  };
+  useEffect(()=>{ cargar(); },[]);
+
+  const guardar=async p=>{
+    const r=await dbProductos.guardar({...p,creadoPor:perfil?.nombre||""});
+    if(!r.ok){ setError(r.detalle); return; }
+    setError(""); setForm(null); await cargar();
+  };
+  const borrar=async p=>{
+    if(!confirm("¿Borrar "+p.cliente+" · "+p.medida+" del catálogo?"))return;
+    const r=await dbProductos.borrar(p.id);
+    if(!r.ok){ setError(r.detalle); return; }
+    await cargar();
+  };
+  const nuevo=cliente=>setForm({cliente:cliente||"",ancho:"",largo:"",bolsasPorRollo:"",
+    rollosPorBulto:"",micras:"",material:"PEBD",pesoBolsa:"",notas:"",activo:true});
+  const editar=p=>setForm({id:p.id,cliente:p.cliente,ancho:p.ancho_cm??"",largo:p.largo_cm??"",
+    bolsasPorRollo:p.bolsas_por_rollo??"",rollosPorBulto:p.rollos_por_bulto??"",
+    micras:p.micras??"",material:p.material||"PEBD",pesoBolsa:p.peso_bolsa_g??"",
+    notas:p.notas||"",activo:p.activo});
+
+  const filas=lista||[];
+  const clientes=[...new Set(filas.map(p=>p.cliente))].sort();
+  const porCliente={};
+  filas.forEach(p=>(porCliente[p.cliente]=porCliente[p.cliente]||[]).push(p));
+
+  return(<div style={{marginTop:24}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10,flexWrap:"wrap"}}>
+      <div>
+        <h3 style={{color:W,fontSize:13,margin:0,fontWeight:700}}>🏷️ Productos por cliente</h3>
+        <p style={{color:GR,fontSize:11,margin:"4px 0 0",lineHeight:1.5}}>
+          Cargá una vez cada producto y después se elige de la lista: ya no hace falta
+          escribir la medida en ningún lado.
+        </p>
+      </div>
+      <button onClick={()=>nuevo("")} disabled={lista===null} style={{...Btn(O,D,{fontSize:12,padding:"7px 14px",opacity:lista===null?0.5:1})}}>+ Agregar producto</button>
+    </div>
+
+    {error&&<div style={{color:O,fontSize:12,marginBottom:12,padding:10,background:O+"15",borderRadius:8}}>{error}</div>}
+
+    {/* Las medidas que ya vienen en las hojas: un toque y queda el producto
+        armado, solo hay que ponerle el cliente y las micras. */}
+    {lista!==null&&lista!==undefined&&(()=>{
+      const yaEstan=new Set(filas.map(p=>p.medida));
+      const faltan=sugeridas.filter(s=>!yaEstan.has(s.medida)).slice(0,10);
+      if(faltan.length===0) return null;
+      return(<div style={{background:CA,border:"1px dashed "+BR,borderRadius:12,padding:14,marginBottom:12}}>
+        <div style={{color:GR,fontSize:11,marginBottom:8,lineHeight:1.5}}>
+          Medidas que ya se usaron en las hojas. Tocá una y se carga sola: solo ponele
+          el cliente y las micras.
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {faltan.map(s=>(
+            <button key={s.medida} onClick={()=>setForm({cliente:"",ancho:s.ancho,largo:s.largo,
+                bolsasPorRollo:s.bolsasPorRollo,rollosPorBulto:s.rollosPorBulto,micras:"",
+                material:"PEBD",pesoBolsa:"",notas:"",activo:true})}
+              style={{...Btn("transparent",W,{fontSize:11,padding:"6px 11px"})}}>
+              + {s.medida} <span style={{color:GR}}>· {s.veces} {s.veces===1?"vez":"veces"}</span>
+            </button>
+          ))}
+        </div>
+      </div>);
+    })()}
+
+    {lista===undefined?<p style={{color:GR,fontSize:12}}>Cargando...</p>:
+     lista===null?null:
+     filas.length===0?(
+      <div style={{textAlign:"center",padding:30,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12,fontSize:12,lineHeight:1.6}}>
+        Todavía no hay productos. Agregá el primero: cliente, medida de la bolsa,
+        bolsas por rollo, rollos por bulto y micras.
+      </div>
+     ):(
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {Object.entries(porCliente).sort().map(([cliente,ps])=>(
+          <div key={cliente} style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8,flexWrap:"wrap"}}>
+              <span style={{color:O,fontWeight:700,fontSize:13,letterSpacing:1}}>{cliente}</span>
+              <button onClick={()=>nuevo(cliente)} style={{...Btn("transparent",O,{fontSize:11,padding:"5px 11px",borderColor:O})}}>+ Medida</button>
+            </div>
+            <div style={{display:"flex",flexDirection:"column"}}>
+              {ps.map((p,i)=>(
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,fontSize:12,padding:"8px 0",
+                     borderTop:i?"1px solid "+BR:"none",flexWrap:"wrap"}}>
+                  <span style={{color:W,fontWeight:700,minWidth:110}}>{p.medida}</span>
+                  <span style={{color:GR,flex:1,minWidth:150}}>
+                    {p.bolsas_por_rollo||"?"} bolsas × rollo · {p.rollos_por_bulto||"?"} rollos × bulto
+                    {p.micras?" · "+p.micras+" µ "+(p.material||""):""}
+                  </span>
+                  {p.peso_bolsa_g?<span style={{color:GN,fontWeight:700,whiteSpace:"nowrap"}}>{p.peso_bolsa_g} g c/u · {p.peso_bolsa_g} kg/millar</span>:null}
+                  <button onClick={()=>editar(p)} style={{...Btn("transparent",GR,{fontSize:11,padding:"4px 9px"})}}>✏️</button>
+                  <button onClick={()=>borrar(p)} style={{...Btn("transparent",RE,{fontSize:11,padding:"4px 9px",borderColor:RE+"55"})}}>✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+     )}
+
+    {form&&<Modal title={form.id?"Editar producto":"Nuevo producto"} onClose={()=>{setForm(null);setError("");}}>
+      <ProductoForm init={form} clientes={clientes} onSave={guardar} onClose={()=>{setForm(null);setError("");}}/>
+    </Modal>}
+  </div>);
+}
+
 function Monitoreo({perfil}){
   const [filas,setFilas]=useState([]);
   const [cargando,setCargando]=useState(true);
@@ -528,6 +737,8 @@ function Monitoreo({perfil}){
     )}
 
     <RollosTurno maquinas={filas} perfil={perfil}/>
+
+    <Productos perfil={perfil}/>
 
     {nuevaMaq&&<Modal title="Agregar máquina" onClose={()=>{setNuevaMaq(false);setError("");}}>
       <NuevaMaquinaForm onSave={crearMaquina} onClose={()=>{setNuevaMaq(false);setError("");}}/>
@@ -797,6 +1008,7 @@ function SubirFoto({maquinas,onListo,perfil}){
 // ── Carga manual de una hoja de control ──────────────────────────────────────
 function CargarHoja({perfil,onCargado}){
   const isMobile=useMobile();
+  const {productos}=useProductos();
   const [maquinas,setMaquinas]=useState([]);
   const [f,setF]=useState({rollera:"",maquinaOrigen:"",fecha:hoyIso(),turno:"dia",operario:"",medida:"",
                            filas:"",bultos:"",scrapEmpalme:"",scrapRollo:"",observaciones:""});
@@ -871,7 +1083,14 @@ function CargarHoja({perfil,onCargado}){
           {f.operario&&!OPERARIOS.some(o=>o.nombre===f.operario)&&
             <input style={{...inp,marginTop:8}} value={f.operario.trim()} onChange={e=>s("operario",e.target.value||" ")} placeholder="Nombre del operario" autoFocus/>}
         </Field>
-        <Field label="Medida"><input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="45x60x20"/></Field>
+        <Field label="Medida">
+          {productos.length>0&&<div style={{marginBottom:6}}>
+            <SelectorProducto productos={productos} valor={f.productoId}
+              onElegir={p=>p?setF(x=>({...x,productoId:p.id,medida:p.medida})):setF(x=>({...x,productoId:""}))}
+              vacio="Elegir del catálogo..."/>
+          </div>}
+          <input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="45x60x20"/>
+        </Field>
         <Field label="Bultos"><input type="number" style={inp} value={f.bultos} onChange={e=>s("bultos",e.target.value)}/></Field>
         <Field label="Scrap empalme (kg)"><input type="number" style={inp} value={f.scrapEmpalme} onChange={e=>s("scrapEmpalme",e.target.value)}/></Field>
         <Field label="Scrap rollo (kg)"><input type="number" style={inp} value={f.scrapRollo} onChange={e=>s("scrapRollo",e.target.value)}/></Field>
