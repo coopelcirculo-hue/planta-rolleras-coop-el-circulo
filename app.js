@@ -58,6 +58,10 @@ const fkg = n => { const v = Number(n)||0; return v.toLocaleString("es-AR",{maxi
 // que cada persona cuente una sola vez en los reportes.
 const normOperario = s => String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/0/g,"O").replace(/6/g,"G");
 const nombreOperario = s => { const t = normOperario(s); return t ? t.split("").join(".") : "S/D"; };
+// El operario de la rollera se anota con nombre y a veces apellido o inicial
+// ("TOBIAS", "TOBIAS D", "TOBIAS.D"). Se agrupa por el nombre de pila.
+const clavePersona = s => String(s||"").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
+  .replace(/[^A-Z ]/g," ").trim().split(/s+/)[0] || "S/D";
 const hoyIso = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const haceDiasIso = n => { const d=new Date(Date.now()-n*86400000); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 

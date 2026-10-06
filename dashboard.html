@@ -861,7 +861,7 @@ function CargarHoja({perfil,onCargado}){
               <button key={id} onClick={()=>s("turno",id)} style={{...Btn(f.turno===id?O:"transparent",f.turno===id?D:GR,{flex:1,fontSize:12})}}>{lbl}</button>))}
           </div>
         </Field>
-        <Field label="Operario del turno"><input style={inp} value={f.operario} onChange={e=>s("operario",e.target.value)} placeholder="Nombre"/></Field>
+        <Field label="Operario de la rollera (turno)"><input style={inp} value={f.operario} onChange={e=>s("operario",e.target.value)} placeholder="Nombre"/></Field>
         <Field label="Medida"><input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="45x60x20"/></Field>
         <Field label="Bultos"><input type="number" style={inp} value={f.bultos} onChange={e=>s("bultos",e.target.value)}/></Field>
         <Field label="Scrap empalme (kg)"><input type="number" style={inp} value={f.scrapEmpalme} onChange={e=>s("scrapEmpalme",e.target.value)}/></Field>
@@ -890,7 +890,7 @@ function CargarHoja({perfil,onCargado}){
                 <input type="number" step="0.001" style={celda} value={b.peso} onChange={e=>setBob(i,"peso",e.target.value)} inputMode="decimal" placeholder="45,650"/>
               </div>
               <div style={{width:84}}>
-                <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>INICIALES</div>
+                <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>INIC. EXTRUSIÓN</div>
                 <input style={celda} value={b.iniciales} onChange={e=>setBob(i,"iniciales",e.target.value)}/>
               </div>
               <button onClick={()=>quitar(i)} style={{...Btn("transparent",RE,{padding:"8px 10px",fontSize:12,borderColor:RE+"44"})}}>✕</button>
@@ -906,7 +906,7 @@ function CargarHoja({perfil,onCargado}){
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:540}}>
             <thead><tr>
-              {["N°","Peso (kg)","Iniciales","Estado","Defecto",""].map(h=>(
+              {["N°","Peso (kg)","Inic. extrusión","Estado","Defecto",""].map(h=>(
                 <th key={h} style={{textAlign:"left",color:GR,fontSize:10,letterSpacing:1,padding:"0 6px 6px 0",whiteSpace:"nowrap"}}>{h.toUpperCase()}</th>))}
             </tr></thead>
             <tbody>
@@ -1022,7 +1022,7 @@ function Produccion(){
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:14}}>
         <Grafico titulo="Kilos por día" tipo="bar" datos={{labels:dias.map(cortarFecha),datasets:[{label:"Kilos",data:dias.map(d=>porDia[d]),backgroundColor:O}]}} opciones={{plugins:{legend:{display:false}}}}/>
         <Grafico titulo="Kilos por máquina" tipo="bar" datos={{labels:Object.keys(porMaquina).sort(),datasets:[{label:"Kilos",data:Object.keys(porMaquina).sort().map(m=>porMaquina[m]),backgroundColor:PU}]}} opciones={{plugins:{legend:{display:false}}}}/>
-        <Grafico titulo="BIEN / MAL por operario" tipo="bar" datos={{labels:ops,datasets:[{label:"BIEN",data:ops.map(o=>opBien[o]||0),backgroundColor:GN},{label:"MAL",data:ops.map(o=>opMal[o]||0),backgroundColor:RE}]}} opciones={{scales:{x:{stacked:true,ticks:{color:GR},grid:{color:BR}},y:{stacked:true,ticks:{color:GR},grid:{color:BR}}}}}/>
+        <Grafico titulo="Bobinas BIEN / MAL por operario de extrusión" tipo="bar" datos={{labels:ops,datasets:[{label:"BIEN",data:ops.map(o=>opBien[o]||0),backgroundColor:GN},{label:"MAL",data:ops.map(o=>opMal[o]||0),backgroundColor:RE}]}} opciones={{scales:{x:{stacked:true,ticks:{color:GR},grid:{color:BR}},y:{stacked:true,ticks:{color:GR},grid:{color:BR}}}}}/>
         {defs.length>0&&<Grafico titulo="Defectos más frecuentes" tipo="doughnut" datos={{labels:defs.map(d=>d[0]),datasets:[{data:defs.map(d=>d[1]),backgroundColor:[RE,O,BL,PU,GN,"#fb923c","#f472b6","#94a3b8"]}]}}/>}
       </div>
     </>)
@@ -1281,6 +1281,28 @@ function Reportes({perfil}){
   const defs=porDefecto();
   const maxDef=defs[0]?.cant||1;
 
+  // Operarios de la ROLLERA: el que firma arriba en la hoja y maneja la máquina.
+  // Es distinto del que hizo la bobina: de este depende el scrap, no las fallas.
+  const porOperarioRollera=()=>{
+    const m={};
+    for(const p of producciones){
+      const k=clavePersona(p.operario);
+      if(!m[k]) m[k]={nombre:k,formas:{},turnos:0,kilos:0,scrap:0,bobinas:0,mal:0};
+      const forma=(p.operario||"S/D").trim().toUpperCase();
+      m[k].formas[forma]=(m[k].formas[forma]||0)+1;
+      m[k].turnos++; m[k].kilos+=(+p.kilos||0);
+      m[k].scrap+=(+p.scrap_empalme||0)+(+p.scrap_rollo||0);
+      m[k].bobinas+=(+p.bobinas||0); m[k].mal+=(+p.mal||0);
+    }
+    // Se muestra la forma en que más veces lo escribieron.
+    return Object.values(m).map(x=>({...x,
+      nombre:Object.entries(x.formas).sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length)[0][0],
+      pct:x.kilos?100*x.scrap/x.kilos:0}))
+      .sort((a,b)=>b.kilos-a.kilos);
+  };
+  const opsRollera=porOperarioRollera();
+  const maxKilosOp=opsRollera[0]?.kilos||1;
+
   // Kilos por rollera (las máquinas de la planta)
   const porMaquina=()=>{
     const m={};
@@ -1358,8 +1380,8 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
     return(<div className="solo-imprimir graf">
       <div className="graf-leyenda">
         <span className="graf-muestra graf-bien"/>bien
-        <span className="graf-muestra graf-mal"/>con error
-        <span className="graf-nota">largo de la barra = bobinas que hizo cada operario</span>
+        <span className="graf-muestra graf-mal"/>falladas
+        <span className="graf-nota">largo de la barra = bobinas que hizo cada operario de extrusión</span>
       </div>
       {ops.map((o,i)=>(
         <div key={i} className="graf-fila">
@@ -1439,7 +1461,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
       <div className="reporte-tarjetas" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:18}}>
         <StatCard v={fkg(kilos)} l="Kilos" s={producciones.length+" turnos"} c={O}/>
         <StatCard v={bobinas.length} l="Bobinas" s={bobinas.length?fkg(kilos/bobinas.length)+" kg c/u":"—"} c={W}/>
-        <StatCard v={mal.length} l="Con error" s={pctError+(sinEstado?" · "+sinEstado+" sin marcar":"")} c={mal.length?RE:GN}/>
+        <StatCard v={mal.length} l="Bobinas falladas" s={pctError+" de las que entraron"+(sinEstado?" · "+sinEstado+" sin marcar":"")} c={mal.length?RE:GN}/>
         <StatCard v={fkg(se+sr)} l="Scrap (kg)" s={pctScrap.toFixed(2)+"% de lo producido"} c={pctScrap>3?RE:BL}/>
         <StatCard v={millares(totalBolsas)} l="Millares de bolsas" s={rollos===null?"falta el SQL 16":fnum(totalRollos)+" rollos · "+turnosRollos+" turnos"} c={GN}/>
       </div>
@@ -1510,7 +1532,11 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
       <div style={{height:14}}/>
 
       <div className="reporte-grilla" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:14,marginBottom:14}}>
-        <Caja titulo="⚠️ Operarios con más errores">
+        <Caja titulo="⚠️ Bobinas falladas, por operario de extrusión">
+          <p style={{color:GR,fontSize:11,lineHeight:1.5,marginBottom:12}}>
+            Las iniciales que se anotan al lado de cada bobina son del operario de la
+            extrusora que la hizo. Esto mide la calidad de lo que llega a la planta.
+          </p>
           {ops.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:<><div className="lista-2col no-imprimir">{ops.map((o,i)=>(
             <div key={i} style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
@@ -1537,6 +1563,26 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
             </div>
           ))}</div>
           <GraficoDefectos defs={defs}/></>}
+        </Caja>
+
+        <Caja titulo="🧑‍🏭 Operarios de la rollera (por turno)">
+          <p style={{color:GR,fontSize:11,lineHeight:1.5,marginBottom:12}}>
+            El que firma la hoja y maneja la máquina. De acá depende el scrap que se tira.
+          </p>
+          {opsRollera.length===0?<p style={{color:GR,fontSize:12}}>Sin datos.</p>:opsRollera.map((o,i)=>(
+            <div key={i} className="fila-reporte" style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8}}>
+                <span style={{color:W,fontWeight:600}}>{o.nombre}</span>
+                <span style={{color:o.pct>3?RE:GN,fontWeight:700,whiteSpace:"nowrap"}}>{fkg(o.scrap)} kg · {o.pct.toFixed(2)}% scrap</span>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <Barra valor={o.kilos} max={maxKilosOp} color={O}/>
+                <span style={{color:GR,fontSize:10,minWidth:150,textAlign:"right"}}>
+                  {fkg(o.kilos)} kg · {o.turnos} turno{o.turnos!==1?"s":""} · {o.mal} bob. falladas
+                </span>
+              </div>
+            </div>
+          ))}
         </Caja>
 
         <Caja titulo="🏭 Kilos por rollera">
@@ -1571,7 +1617,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
                       <span style={{color:b.estado==="MAL"?RE:GN,fontWeight:700}}>{b.estado||"—"}</span>
                     </div>
                     <div style={{color:GR,fontSize:11,lineHeight:1.6}}>
-                      Operario: <span style={{color:W}}>{nombreOperario(b.operario_bobina)}</span> · {fkg(b.peso)} kg<br/>
+                      La hizo (extrusión): <span style={{color:W}}>{nombreOperario(b.operario_bobina)}</span> · {fkg(b.peso)} kg<br/>
                       {tituloMaquina(b.maquina)} · {fdate(b.fecha)} · turno {b.turno}<br/>
                       {b.maquina_origen?<>Bobina de máquina <span style={{color:W}}>{b.maquina_origen}</span><br/></>:null}
                       {b.defectos?<span style={{color:O}}>Defecto: {b.defectos}</span>:null}
