@@ -1395,6 +1395,8 @@ function Reportes({perfil}){
   const [soloRevisar,setSoloRevisar]=useState(true);
   // Rollos por turno (se cargan en Monitoreo). null = falta el SQL 16.
   const [rollos,setRollos]=useState(null);
+  // Catálogo: de ahí sale el peso teórico de cada bolsa para el calibre.
+  const {productos}=useProductos();
 
 
   // Los períodos que pidieron: la semana y el trimestre cerrado.
@@ -1539,6 +1541,46 @@ function Reportes({perfil}){
   };
   const maqs=porMaquina();
   const maxKilos=maqs[0]?.kilos||1;
+
+  // ── Kilos por millar de bolsas y control de calibre ──
+  // Cuánto material lleva cada mil bolsas. Se compara con el peso teórico del
+  // producto (ancho x largo x 2 caras x micras): si da más, o se está yendo de
+  // espesor o se tiró más material del que figura como scrap.
+  const claveMedida=m=>{ const n=numerosMedida(m); return n.length>=4?n.slice(0,4).join("x"):null; };
+  const porMillar=()=>{
+    // Primero, cuántas bolsas salieron en cada turno y con qué medida.
+    const turnos={};
+    for(const r of rollosF){
+      const k=r.maquina+"|"+r.fecha+"|"+r.turno;
+      turnos[k]=turnos[k]||{bolsas:0,medidas:{}};
+      turnos[k].bolsas+=bolsasDe(r);
+      const cm=claveMedida(r.medida); if(cm) turnos[k].medidas[cm]=true;
+    }
+    // Después, los kilos de la hoja de ese mismo turno. Si en el turno se
+    // hicieron dos medidas distintas no se puede repartir: ese turno no entra.
+    const porMed={}; let mezclados=0;
+    for(const p of producciones){
+      const t=turnos[p.maquina+"|"+p.fecha+"|"+p.turno];
+      if(!t||t.bolsas<=0) continue;
+      const medidas=Object.keys(t.medidas);
+      if(medidas.length!==1){ mezclados++; continue; }
+      const cm=medidas[0];
+      porMed[cm]=porMed[cm]||{medida:cm,turnos:0,kilos:0,bolsas:0,scrap:0};
+      porMed[cm].turnos++; porMed[cm].kilos+=(+p.kilos||0); porMed[cm].bolsas+=t.bolsas;
+      porMed[cm].scrap+=(+p.scrap_empalme||0)+(+p.scrap_rollo||0);
+    }
+    const filas=Object.values(porMed).map(x=>{
+      const prod=productos.find(pr=>claveMedida(pr.medida)===x.medida);
+      const neto=Math.max(0,x.kilos-x.scrap);
+      const real=x.bolsas?1000*neto/x.bolsas:0;             // kg por millar, sin el scrap
+      const bruto=x.bolsas?1000*x.kilos/x.bolsas:0;         // lo que consumió en total
+      const teo=prod&&prod.peso_bolsa_g?Number(prod.peso_bolsa_g):null;
+      return {...x,real,bruto,teo,cliente:prod?prod.cliente:"",
+              desvio:teo?100*(real-teo)/teo:null};
+    }).sort((a,b)=>b.bolsas-a.bolsas);
+    return {filas,mezclados};
+  };
+  const calibre=porMillar();
 
   // Trazabilidad: buscar una bobina por número
   const encontradas=buscar.trim()
@@ -1821,6 +1863,40 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
               </div>
             </div>
           ))}
+        </Caja>
+
+        <Caja titulo="📐 Kilos por millar y calibre">
+          <p style={{color:GR,fontSize:11,lineHeight:1.5,marginBottom:12}}>
+            Cuánto material se usó por cada mil bolsas, ya descontado el scrap. Si da más
+            que el teórico del producto, se está yendo de espesor.
+          </p>
+          {calibre.filas.length===0?
+            <p style={{color:GR,fontSize:12,lineHeight:1.5}}>
+              Para esto hacen falta los dos datos del mismo turno: la hoja y los rollos.
+              Cargá los bultos al terminar el turno y acá aparece solo.
+            </p>:
+           calibre.filas.map((m,i)=>(
+            <div key={i} className="fila-reporte" style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8,flexWrap:"wrap"}}>
+                <span style={{color:W,fontWeight:600}}>{m.medida}{m.cliente?" · "+m.cliente:""}</span>
+                <span style={{color:W,fontWeight:700,whiteSpace:"nowrap"}}>{m.real.toFixed(2)} kg/millar</span>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{color:GR,fontSize:10,flex:1,minWidth:170}}>
+                  {m.turnos} turno{m.turnos!==1?"s":""} · {millares(m.bolsas)} millares · {fkg(m.kilos)} kg de bobina
+                </span>
+                {m.teo==null
+                  ? <span style={{color:GR,fontSize:10}}>sin producto en el catálogo: cargalo en Monitoreo para comparar</span>
+                  : <span style={{color:Math.abs(m.desvio)>10?RE:(Math.abs(m.desvio)>5?O:GN),fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
+                      teórico {m.teo} · {m.desvio>0?"+":""}{m.desvio.toFixed(0)}%
+                    </span>}
+              </div>
+            </div>
+          ))}
+          {calibre.mezclados>0&&<p style={{color:GR,fontSize:10,marginTop:8,lineHeight:1.5}}>
+            {calibre.mezclados} turno{calibre.mezclados!==1?"s":""} con dos medidas distintas no entra{calibre.mezclados!==1?"n":""} en la cuenta:
+            no se puede saber cuántos kilos fueron a cada una.
+          </p>}
         </Caja>
 
         <Caja titulo="🔎 Buscar bobina" clase="no-imprimir">
