@@ -861,7 +861,16 @@ function CargarHoja({perfil,onCargado}){
               <button key={id} onClick={()=>s("turno",id)} style={{...Btn(f.turno===id?O:"transparent",f.turno===id?D:GR,{flex:1,fontSize:12})}}>{lbl}</button>))}
           </div>
         </Field>
-        <Field label="Operario de la rollera (turno)"><input style={inp} value={f.operario} onChange={e=>s("operario",e.target.value)} placeholder="Nombre"/></Field>
+        <Field label="Operario de la rollera (turno)">
+          <select style={inp} value={OPERARIOS.some(o=>o.nombre===f.operario)?f.operario:(f.operario?"otro":"")}
+                  onChange={e=>s("operario",e.target.value==="otro"?" ":e.target.value)}>
+            <option value="">Elegir...</option>
+            {OPERARIOS.map(o=><option key={o.nombre} value={o.nombre}>{o.nombre}</option>)}
+            <option value="otro">Otro (escribir)</option>
+          </select>
+          {f.operario&&!OPERARIOS.some(o=>o.nombre===f.operario)&&
+            <input style={{...inp,marginTop:8}} value={f.operario.trim()} onChange={e=>s("operario",e.target.value||" ")} placeholder="Nombre del operario" autoFocus/>}
+        </Field>
         <Field label="Medida"><input style={inp} value={f.medida} onChange={e=>s("medida",e.target.value)} placeholder="45x60x20"/></Field>
         <Field label="Bultos"><input type="number" style={inp} value={f.bultos} onChange={e=>s("bultos",e.target.value)}/></Field>
         <Field label="Scrap empalme (kg)"><input type="number" style={inp} value={f.scrapEmpalme} onChange={e=>s("scrapEmpalme",e.target.value)}/></Field>
@@ -1286,18 +1295,13 @@ function Reportes({perfil}){
   const porOperarioRollera=()=>{
     const m={};
     for(const p of producciones){
-      const k=clavePersona(p.operario);
-      if(!m[k]) m[k]={nombre:k,formas:{},turnos:0,kilos:0,scrap:0,bobinas:0,mal:0};
-      const forma=(p.operario||"S/D").trim().toUpperCase();
-      m[k].formas[forma]=(m[k].formas[forma]||0)+1;
+      const k=operarioRollera(p.operario);
+      if(!m[k]) m[k]={nombre:k,turnos:0,kilos:0,scrap:0,bobinas:0,mal:0};
       m[k].turnos++; m[k].kilos+=(+p.kilos||0);
       m[k].scrap+=(+p.scrap_empalme||0)+(+p.scrap_rollo||0);
       m[k].bobinas+=(+p.bobinas||0); m[k].mal+=(+p.mal||0);
     }
-    // Se muestra la forma en que más veces lo escribieron.
-    return Object.values(m).map(x=>({...x,
-      nombre:Object.entries(x.formas).sort((a,b)=>b[1]-a[1]||b[0].length-a[0].length)[0][0],
-      pct:x.kilos?100*x.scrap/x.kilos:0}))
+    return Object.values(m).map(x=>({...x,pct:x.kilos?100*x.scrap/x.kilos:0}))
       .sort((a,b)=>b.kilos-a.kilos);
   };
   const opsRollera=porOperarioRollera();
@@ -1661,7 +1665,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
                   <div style={{fontSize:12,flex:1,minWidth:200}}>
                     <div style={{color:W,fontWeight:700}}>
                       {tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}
-                      {p.operario&&<span style={{color:GR,fontWeight:400}}> · {p.operario}</span>}
+                      {p.operario&&<span style={{color:GR,fontWeight:400}}> · {operarioRollera(p.operario)}</span>}
                     </div>
                     <div style={{color:GR,fontSize:11,marginTop:2}}>
                       {p.medida||"sin medida"} · {p.bobinas} bobinas · {fkg(p.kilos)} kg · {p.bien} bien / {p.mal} mal

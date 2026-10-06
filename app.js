@@ -58,10 +58,23 @@ const fkg = n => { const v = Number(n)||0; return v.toLocaleString("es-AR",{maxi
 // que cada persona cuente una sola vez en los reportes.
 const normOperario = s => String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/0/g,"O").replace(/6/g,"G");
 const nombreOperario = s => { const t = normOperario(s); return t ? t.split("").join(".") : "S/D"; };
-// El operario de la rollera se anota con nombre y a veces apellido o inicial
-// ("TOBIAS", "TOBIAS D", "TOBIAS.D"). Se agrupa por el nombre de pila.
-const clavePersona = s => String(s||"").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
-  .replace(/[^A-Z ]/g," ").trim().split(/s+/)[0] || "S/D";
+// Los cinco que manejan las rolleras. En la hoja aparecen escritos de muchas
+// formas ("NAZARENO", "TOBIAS D", "TOBIAS.D", y "JOAN V. SOTTI" cuando la IA lee
+// mal): cada forma cae en el operario que corresponde.
+const OPERARIOS = [
+  {nombre:"TOBIAS", re:/^TOB/},
+  {nombre:"NAZA",   re:/^NAZ/},
+  {nombre:"EMI",    re:/^EMI/},
+  {nombre:"DIEGO",  re:/^DIE/},
+  {nombre:"JUAN",   re:/^(JUAN|JOAN|JHUAN|JUN)/},
+];
+const operarioRollera = s => {
+  const t = String(s||"").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
+    .replace(/[^A-Z ]/g," ").replace(/\s+/g," ").trim();
+  if(!t) return "S/D";
+  const m = OPERARIOS.find(o=>o.re.test(t));
+  return m ? m.nombre : t.split(" ")[0];   // alguien nuevo: queda con su nombre
+};
 const hoyIso = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const haceDiasIso = n => { const d=new Date(Date.now()-n*86400000); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 
