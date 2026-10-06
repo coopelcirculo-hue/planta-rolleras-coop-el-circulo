@@ -551,7 +551,7 @@ function Monitoreo({perfil}){
 // era de una hoja que ya estaba, y por eso no hay que volver a subirla.
 function mensajeCarga(d){
   const h=d.hoja;
-  const desc=h?tituloMaquina(h.maquina)+" · "+fdate(h.fecha)+" · "+h.turno+" · "+h.bobinas+" bobinas · "+fnum(h.kilos)+" kg":"";
+  const desc=h?tituloMaquina(h.maquina)+" · "+fdate(h.fecha)+" · "+h.turno+" · "+h.bobinas+" bobinas · "+fkg(h.kilos)+" kg":"";
   if(d.resultado==="fallida")
     return {tipo:"error",texto:"✗ No se pudo leer la hoja: "+(d.motivo||"error desconocido")+
       "\nProbá sacar la foto de nuevo, derecha y con buena luz, o cargala a mano acá abajo."};
@@ -606,7 +606,7 @@ function UltimasCargas({version}){
         <div style={{flex:1,minWidth:0}}>
           <div style={{color:W}}>
             <span style={{color,fontWeight:700}}>{etiqueta}</span>
-            {h?" · "+tituloMaquina(h.maquina)+" · "+fdate(h.fecha)+" · "+h.turno+" · "+h.bobinas+" bob. · "+fnum(h.kilos)+" kg"
+            {h?" · "+tituloMaquina(h.maquina)+" · "+fdate(h.fecha)+" · "+h.turno+" · "+h.bobinas+" bob. · "+fkg(h.kilos)+" kg"
               :(c.rollera?" · "+tituloMaquina(c.rollera):"")}
           </div>
           {r==="fallida"&&c.motivo&&<div style={{color:GR}}>{c.motivo}</div>}
@@ -827,7 +827,7 @@ function CargarHoja({perfil,onCargado}){
     <div style={{background:CA,border:"1px solid "+BR,borderRadius:12,padding:16,marginBottom:14}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{color:W,fontSize:12,fontWeight:700}}>Bobinas</div>
-        <div style={{color:GR,fontSize:11}}>{conPeso.length} cargada(s) · <span style={{color:O,fontWeight:700}}>{fnum(kilos)} kg</span></div>
+        <div style={{color:GR,fontSize:11}}>{conPeso.length} cargada(s) · <span style={{color:O,fontWeight:700}}>{fkg(kilos)} kg</span></div>
       </div>
 
       {isMobile?(
@@ -841,7 +841,7 @@ function CargarHoja({perfil,onCargado}){
               </div>
               <div style={{flex:1}}>
                 <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>PESO (KG)</div>
-                <input type="number" style={celda} value={b.peso} onChange={e=>setBob(i,"peso",e.target.value)} inputMode="decimal"/>
+                <input type="number" step="0.001" style={celda} value={b.peso} onChange={e=>setBob(i,"peso",e.target.value)} inputMode="decimal" placeholder="45,650"/>
               </div>
               <div style={{width:84}}>
                 <div style={{color:GR,fontSize:9,letterSpacing:1,marginBottom:4}}>INICIALES</div>
@@ -946,8 +946,10 @@ function Produccion(){
   const cortarFecha=s=>s.slice(5).split("-").reverse().join("/");
 
   const porDia=agrupar(bobinas,"fecha",b=>+b.peso||0);const dias=Object.keys(porDia).sort();
-  const opBien=agrupar(bobinas.filter(b=>b.estado==="BIEN"),"operario_bobina",()=>1);
-  const opMal=agrupar(bobinas.filter(b=>b.estado==="MAL"),"operario_bobina",()=>1);
+  // Las iniciales se normalizan: "N.M", "N M" y "NM" son la misma persona.
+  const bobsOp=bobinas.map(b=>({...b,op:nombreOperario(b.operario_bobina)}));
+  const opBien=agrupar(bobsOp.filter(b=>b.estado==="BIEN"),"op",()=>1);
+  const opMal=agrupar(bobsOp.filter(b=>b.estado==="MAL"),"op",()=>1);
   const ops=[...new Set([...Object.keys(opBien),...Object.keys(opMal)])].sort();
   const porMaquina=agrupar(bobinas,"maquina",b=>+b.peso||0);
   const defectosCnt={};
@@ -966,10 +968,10 @@ function Produccion(){
       </div>
     ):(<>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:20}}>
-        <StatCard v={fnum(kilos)} l="Kilos" s="del período" c={O}/>
+        <StatCard v={fkg(kilos)} l="Kilos" s="del período" c={O}/>
         <StatCard v={bobinas.length} l="Bobinas" s="del período" c={W}/>
         <StatCard v={<span><span style={{color:GN}}>{bien}</span> / <span style={{color:RE}}>{mal}</span></span>} l="Bien / Mal" s="bobinas" c={W}/>
-        <StatCard v={fnum(se+sr)} l="Scrap (kg)" s={scrapPct} c={BL}/>
+        <StatCard v={fkg(se+sr)} l="Scrap (kg)" s={scrapPct} c={BL}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:14}}>
         <Grafico titulo="Kilos por día" tipo="bar" datos={{labels:dias.map(cortarFecha),datasets:[{label:"Kilos",data:dias.map(d=>porDia[d]),backgroundColor:O}]}} opciones={{plugins:{legend:{display:false}}}}/>
@@ -1064,7 +1066,7 @@ function CorregirHoja({hoja,onCerrar,onCambio}){
           </div>
           <div style={{width:92}}>
             <div style={{color:GR,fontSize:9,marginBottom:3}}>PESO</div>
-            <input type="number" style={celda} value={b.peso??""} onChange={e=>setBob(i,"peso",e.target.value)}/>
+            <input type="number" step="0.001" style={celda} value={b.peso??""} onChange={e=>setBob(i,"peso",e.target.value)}/>
           </div>
           <div style={{width:76}}>
             <div style={{color:GR,fontSize:9,marginBottom:3}}>INIC.</div>
@@ -1209,7 +1211,8 @@ function Reportes({perfil}){
   const porOperario=()=>{
     const m={};
     for(const b of bobinas){
-      const k=b.operario_bobina||"S/D";
+      // Mismas iniciales escritas distinto son la misma persona.
+      const k=nombreOperario(b.operario_bobina);
       if(!m[k]) m[k]={nombre:k,total:0,mal:0,kilos:0};
       m[k].total++; m[k].kilos+=(+b.peso||0);
       if(b.estado==="MAL") m[k].mal++;
@@ -1388,10 +1391,10 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
       </div>
      ):(<>
       <div className="reporte-tarjetas" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:18}}>
-        <StatCard v={fnum(kilos)} l="Kilos" s={producciones.length+" turnos"} c={O}/>
-        <StatCard v={bobinas.length} l="Bobinas" s={bobinas.length?fnum(Math.round(kilos/bobinas.length))+" kg c/u":"—"} c={W}/>
+        <StatCard v={fkg(kilos)} l="Kilos" s={producciones.length+" turnos"} c={O}/>
+        <StatCard v={bobinas.length} l="Bobinas" s={bobinas.length?fkg(kilos/bobinas.length)+" kg c/u":"—"} c={W}/>
         <StatCard v={mal.length} l="Con error" s={pctError+(sinEstado?" · "+sinEstado+" sin marcar":"")} c={mal.length?RE:GN}/>
-        <StatCard v={fnum(se+sr)} l="Scrap (kg)" s={pctScrap.toFixed(2)+"% de lo producido"} c={pctScrap>3?RE:BL}/>
+        <StatCard v={fkg(se+sr)} l="Scrap (kg)" s={pctScrap.toFixed(2)+"% de lo producido"} c={pctScrap>3?RE:BL}/>
         <StatCard v={millares(totalBolsas)} l="Millares de bolsas" s={rollos===null?"falta el SQL 16":fnum(totalRollos)+" rollos · "+turnosRollos+" turnos"} c={GN}/>
       </div>
 
@@ -1416,18 +1419,18 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
           <div className="scrap-resumen" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:16}}>
             <div style={{background:D,borderRadius:8,padding:10}}>
               <div style={{color:GR,fontSize:9,letterSpacing:1}}>EMPALME</div>
-              <div style={{color:BL,fontWeight:700,fontSize:15}}>{fnum(se)} kg</div>
+              <div style={{color:BL,fontWeight:700,fontSize:15}}>{fkg(se)} kg</div>
               <div style={{color:GR,fontSize:10}}>{se+sr?(100*se/(se+sr)).toFixed(0):0}% del scrap</div>
             </div>
             <div style={{background:D,borderRadius:8,padding:10}}>
               <div style={{color:GR,fontSize:9,letterSpacing:1}}>ROLLO</div>
-              <div style={{color:PU,fontWeight:700,fontSize:15}}>{fnum(sr)} kg</div>
+              <div style={{color:PU,fontWeight:700,fontSize:15}}>{fkg(sr)} kg</div>
               <div style={{color:GR,fontSize:10}}>{se+sr?(100*sr/(se+sr)).toFixed(0):0}% del scrap</div>
             </div>
             {scrapTurno.map(t=>(
               <div key={t.turno} style={{background:D,borderRadius:8,padding:10}}>
                 <div style={{color:GR,fontSize:9,letterSpacing:1}}>TURNO {t.turno.toUpperCase()}</div>
-                <div style={{color:t.pct>3?RE:W,fontWeight:700,fontSize:15}}>{fnum(t.total)} kg</div>
+                <div style={{color:t.pct>3?RE:W,fontWeight:700,fontSize:15}}>{fkg(t.total)} kg</div>
                 <div style={{color:GR,fontSize:10}}>{t.pct.toFixed(2)}% de lo que produjo</div>
               </div>
             ))}
@@ -1439,7 +1442,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
               <div key={i} style={{marginBottom:10}}>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                   <span style={{color:W,fontWeight:600}}>{tituloMaquina(m.maquina)}</span>
-                  <span style={{color:m.pct>3?RE:BL,fontWeight:700}}>{fnum(m.total)} kg · {m.pct.toFixed(2)}%</span>
+                  <span style={{color:m.pct>3?RE:BL,fontWeight:700}}>{fkg(m.total)} kg · {m.pct.toFixed(2)}%</span>
                 </div>
                 <Barra valor={m.total} max={scrapMaq[0].total} color={m.pct>3?RE:BL}/>
               </div>
@@ -1451,7 +1454,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
             <div key={i} className="fila-reporte" style={{padding:"7px 0",borderBottom:i<peoresTurnos.length-1?"1px solid "+BR:"none"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12}}>
                 <span style={{color:W}}>{tituloMaquina(p.maquina)} · {fdate(p.fecha)} · {p.turno}</span>
-                <span style={{color:p.pct>3?RE:GR,fontWeight:700,whiteSpace:"nowrap"}}>{fnum(p.scrap)} kg · {p.pct.toFixed(1)}%</span>
+                <span style={{color:p.pct>3?RE:GR,fontWeight:700,whiteSpace:"nowrap"}}>{fkg(p.scrap)} kg · {p.pct.toFixed(1)}%</span>
               </div>
               <div className="solo-imprimir barra-impresa"><Barra valor={p.scrap} max={peoresTurnos[0].scrap} color={p.pct>3?RE:GR}/></div>
             </div>
@@ -1495,7 +1498,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
             <div key={i} style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4}}>
                 <span style={{color:W,fontWeight:600}}>{tituloMaquina(m.maquina)}</span>
-                <span style={{color:O,fontWeight:700}}>{fnum(m.kilos)} kg</span>
+                <span style={{color:O,fontWeight:700}}>{fkg(m.kilos)} kg</span>
               </div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
                 <Barra valor={m.kilos} max={maxKilos} color={PU}/>
@@ -1522,7 +1525,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
                       <span style={{color:b.estado==="MAL"?RE:GN,fontWeight:700}}>{b.estado||"—"}</span>
                     </div>
                     <div style={{color:GR,fontSize:11,lineHeight:1.6}}>
-                      Operario: <span style={{color:W}}>{b.operario_bobina||"S/D"}</span> · {fnum(b.peso)} kg<br/>
+                      Operario: <span style={{color:W}}>{nombreOperario(b.operario_bobina)}</span> · {fkg(b.peso)} kg<br/>
                       {tituloMaquina(b.maquina)} · {fdate(b.fecha)} · turno {b.turno}<br/>
                       {b.maquina_origen?<>Bobina de máquina <span style={{color:W}}>{b.maquina_origen}</span><br/></>:null}
                       {b.defectos?<span style={{color:O}}>Defecto: {b.defectos}</span>:null}
@@ -1569,7 +1572,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
                       {p.operario&&<span style={{color:GR,fontWeight:400}}> · {p.operario}</span>}
                     </div>
                     <div style={{color:GR,fontSize:11,marginTop:2}}>
-                      {p.medida||"sin medida"} · {p.bobinas} bobinas · {fnum(p.kilos)} kg · {p.bien} bien / {p.mal} mal
+                      {p.medida||"sin medida"} · {p.bobinas} bobinas · {fkg(p.kilos)} kg · {p.bien} bien / {p.mal} mal
                     </div>
                     {problemas.map((t,i)=>(
                       <div key={i} style={{color:O,fontSize:11,marginTop:4,lineHeight:1.5}}>⚠️ {t}</div>

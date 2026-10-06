@@ -50,6 +50,14 @@ const fdate = d => {
   return new Date(d).toLocaleDateString("es-AR");
 };
 const fnum = n => (Number(n)||0).toLocaleString("es-AR");
+// Los kilos tienen decimales: una bobina pesa 45,650 kg. Hasta 1.000 kg se
+// muestran con decimales y de ahí para arriba redondeados, para que se lea bien.
+const fkg = n => { const v = Number(n)||0; return v.toLocaleString("es-AR",{maximumFractionDigits: Math.abs(v)<1000?2:0}); };
+// Las iniciales del operario vienen escritas de muchas formas ("N.M", "N. M",
+// "NM", "N M") y la IA a veces lee la G como 6 y la O como 0. Se normalizan para
+// que cada persona cuente una sola vez en los reportes.
+const normOperario = s => String(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"").replace(/0/g,"O").replace(/6/g,"G");
+const nombreOperario = s => { const t = normOperario(s); return t ? t.split("").join(".") : "S/D"; };
 const hoyIso = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 const haceDiasIso = n => { const d=new Date(Date.now()-n*86400000); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
 
@@ -476,7 +484,7 @@ const quitarNotaRevisar = (obs, patron) => {
 // ── Hojas para revisar ───────────────────────────────────────────────────────
 // Se calcula en el momento con los datos reales: cuando se corrige, la marca
 // desaparece sola. Rangos tomados de lo que es normal en la planta (mediana 10
-// bobinas y ~480.000 kg por hoja; bobinas de 40.000 a 57.000 kg).
+// bobinas y ~450 kg por hoja; bobinas de 40 a 57 kg).
 const normBobina = n => String(n||"").toUpperCase().replace(/[^0-9A-Z]/g,"");
 const problemasHoja = (p, bobinasDeLaHoja) => {
   const out = [];
@@ -485,9 +493,9 @@ const problemasHoja = (p, bobinasDeLaHoja) => {
   if (p.fecha > hoyIso()) out.push("Fecha futura ("+fdate(p.fecha)+")");
   else if (p.fecha < haceDiasIso(120)) out.push("Fecha de hace más de 4 meses ("+fdate(p.fecha)+"): probablemente el año o el mes mal leído");
   if (bs.length > 20) out.push("Tiene "+bs.length+" bobinas, el doble de lo normal: puede haber otra hoja mezclada o la misma foto cargada más de una vez");
-  else if ((+p.kilos||0) > 1000000) out.push(fnum(p.kilos)+" kg en un turno es mucho más de lo normal");
-  const raros = bs.filter(b => b.peso!=null && (+b.peso < 20000 || +b.peso > 80000));
-  if (raros.length) out.push("Peso raro en "+raros.map(b=>"bobina "+b.n_bobina+" ("+fnum(b.peso)+" kg)").join(", "));
+  else if ((+p.kilos||0) > 1500) out.push(fkg(p.kilos)+" kg en un turno es mucho más de lo normal");
+  const raros = bs.filter(b => b.peso!=null && (+b.peso < 15 || +b.peso > 90));
+  if (raros.length) out.push("Peso raro en "+raros.map(b=>"bobina "+b.n_bobina+" ("+fkg(b.peso)+" kg)").join(", "));
   const sinPeso = bs.filter(b => b.peso==null);
   if (sinPeso.length) out.push("Sin peso: bobina "+sinPeso.map(b=>b.n_bobina).join(", "));
   // La numeración se repite (bobinas viejas y nuevas): el mismo número con otro
@@ -496,8 +504,8 @@ const problemasHoja = (p, bobinasDeLaHoja) => {
   const porNum = {};
   bs.forEach(b => (porNum[normBobina(b.n_bobina)] = porNum[normBobina(b.n_bobina)] || []).push(b));
   const rep = Object.values(porNum).filter(l => l.length > 1 &&
-    l.some((b,i) => l.some((c,j) => j>i && b.peso!=null && c.peso!=null && Math.abs(b.peso-c.peso) <= 50)));
-  if (rep.length) out.push("Bobina posiblemente cargada dos veces: "+rep.map(l => l[0].n_bobina+" ("+l.map(b=>fnum(b.peso)).join(" y ")+" kg)").join(", ")+". Si es la misma, borrá una");
+    l.some((b,i) => l.some((c,j) => j>i && b.peso!=null && c.peso!=null && Math.abs(b.peso-c.peso) <= 0.05)));
+  if (rep.length) out.push("Bobina posiblemente cargada dos veces: "+rep.map(l => l[0].n_bobina+" ("+l.map(b=>fkg(b.peso)).join(" y ")+" kg)").join(", ")+". Si es la misma, borrá una");
   const sinEstado = bs.filter(b => !b.estado).length;
   if (sinEstado) out.push(sinEstado+(sinEstado===1?" bobina sin":" bobinas sin")+" BIEN/MAL");
   // Lo normal es 2 a 5%. Entre 5 y 10% es alto pero posible (se ve en el reporte

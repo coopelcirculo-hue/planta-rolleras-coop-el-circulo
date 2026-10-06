@@ -55,14 +55,20 @@ const aNumero = v => {
   return s === '' ? NaN : Number(s);
 };
 
-// Si la IA manda el peso como NUMERO en vez de texto ("peso": 44.000 sin comillas),
-// el JSON lo lee como 44 y se pierden los miles. Como sabemos el orden de
-// magnitud real, se recupera multiplicando, y se avisa para que lo revisen.
-const recuperarMiles = (n, minimoEsperado) => {
-  if (isNaN(n) || n <= 0 || n >= minimoEsperado) return { valor: n, recuperado: false };
-  let v = n;
-  while (v < minimoEsperado) v *= 1000;
-  return { valor: Math.round(v), recuperado: true, antes: n };
+// En la hoja los pesos se escriben en kilos con coma: "45.650" son 45 kg 650 g.
+// Antes se borraban los separadores y quedaba 45650, o sea mil veces mas.
+// aKilos devuelve SIEMPRE kilos: lo que va despues del ultimo separador son los
+// decimales y, si no hay separador, un numero mayor a 500 esta en gramos.
+const aKilos = v => {
+  if (v == null) return NaN;
+  if (typeof v === 'number') return v > 500 ? v / 1000 : v;
+  const s = String(v).replace(/[^\d.,]/g, '').trim();
+  if (s === '') return NaN;
+  const m = s.match(/[.,](\d+)$/);
+  const digitos = Number(s.replace(/[.,]/g, ''));
+  if (isNaN(digitos)) return NaN;
+  if (m) return digitos / Math.pow(10, m[1].length);
+  return digitos > 500 ? digitos / 1000 : digitos;
 };
 
 // Filas y bultos: si la IA lee otra cosa (una fecha, un telefono) queda un numero
@@ -179,16 +185,11 @@ for (const b of (Array.isArray(filas) ? filas : [])) {
   n = esIlegible(n) ? '' : String(n).replace(/\s+/g, '').trim();
   if (!n) { adv.push('Una bobina no tiene numero legible: se omitio'); continue; }
 
-  let peso = aNumero(b.peso);
-  const recP = recuperarMiles(peso, 10000);
-  if (recP.recuperado) {
-    peso = recP.valor;
-    adv.push('Bobina ' + n + ': el peso vino como ' + recP.antes + ', se interpreto ' + peso + ' kg. VERIFICAR.');
-  }
+  let peso = aKilos(b.peso);
   if (isNaN(peso)) {
     adv.push('Bobina ' + n + ': peso faltante o ilegible');
-  } else if (peso < 10000 || peso > 100000) {
-    adv.push('Bobina ' + n + ': peso fuera del rango habitual (' + peso + '), verificar');
+  } else if (peso < 15 || peso > 90) {
+    adv.push('Bobina ' + n + ': peso fuera del rango habitual (' + peso + ' kg), verificar');
   }
 
   let estado = String(b.estado || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
@@ -221,18 +222,16 @@ if (bobinas.length === 0) errores.push('No se pudo leer ninguna bobina de la hoj
 // --- scrap ---
 // A veces el scrap se anota como suma ("5.700 + 1.500"): hay que sumar las
 // partes, no juntar los digitos (eso daba 57001500).
-const aNumeroSuma = v => {
+const aKilosSuma = v => {
   if (v == null) return NaN;
-  if (typeof v === 'number') return v;
-  const partes = String(v).split('+').map(aNumero).filter(n => !isNaN(n));
+  if (typeof v === 'number') return aKilos(v);
+  const partes = String(v).split('+').map(aKilos).filter(n => !isNaN(n));
   return partes.length ? partes.reduce((a, n) => a + n, 0) : NaN;
 };
-let se = aNumeroSuma(d.scrap_empalme);
-let sr = aNumeroSuma(d.scrap_rollo);
-const recSE = recuperarMiles(se, 100);
-if (recSE.recuperado) { se = recSE.valor; adv.push('Scrap de empalme vino como ' + recSE.antes + ', se interpreto ' + se + ' kg. VERIFICAR.'); }
-const recSR = recuperarMiles(sr, 100);
-if (recSR.recuperado) { sr = recSR.valor; adv.push('Scrap de rollo vino como ' + recSR.antes + ', se interpreto ' + sr + ' kg. VERIFICAR.'); }
+let se = aKilosSuma(d.scrap_empalme);
+let sr = aKilosSuma(d.scrap_rollo);
+if (!isNaN(se) && se > 100) adv.push('Scrap de empalme leido como ' + se + ' kg: es mucho, VERIFICAR.');
+if (!isNaN(sr) && sr > 100) adv.push('Scrap de rollo leido como ' + sr + ' kg: es mucho, VERIFICAR.');
 if (isNaN(se)) adv.push('Scrap de empalme faltante o ilegible (se guarda 0)');
 if (isNaN(sr)) adv.push('Scrap de rollo faltante o ilegible (se guarda 0)');
 
