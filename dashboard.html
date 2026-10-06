@@ -310,6 +310,14 @@ function NuevaMaquinaForm({onSave,onClose}){
 function RollosForm({maquinas,init,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const [guardando,setGuardando]=useState(false);
+  // Si ese turno ya tiene rollos cargados se avisa, para no contarlos dos veces.
+  const [yaHay,setYaHay]=useState([]);
+  useEffect(()=>{
+    let vivo=true;
+    if(!f.maquinaId||!f.fecha||!f.turno){ setYaHay([]); return; }
+    (async()=>{ const l=await dbRollos.yaHay(f.maquinaId,f.fecha,f.turno); if(vivo) setYaHay(l); })();
+    return ()=>{ vivo=false; };
+  },[f.maquinaId,f.fecha,f.turno]);
   const sugerido=rollosPorBulto(f.medida);
   const rpb=f.rpb!==""?Number(f.rpb):(sugerido||0);
   const rollos=(Number(f.bultos)||0)*rpb;
@@ -353,6 +361,10 @@ function RollosForm({maquinas,init,onSave,onClose}){
         <input type="number" inputMode="numeric" min="1" style={inp} value={f.bpr} onChange={e=>s("bpr",e.target.value)} placeholder={sugeridoB?String(sugeridoB)+" (de la medida)":"Ej: 20"}/>
       </Field>
     </div>
+    {yaHay.length>0&&<div style={{background:O+"15",border:"1px solid "+O+"55",borderRadius:10,padding:"10px 12px",marginBottom:12,color:O,fontSize:11,lineHeight:1.5}}>
+      ⚠️ Este turno ya tiene {yaHay.length===1?"una carga":yaHay.length+" cargas"} de rollos: {yaHay.map(r=>(r.medida||"sin medida")+" · "+fnum(r.bultos)+" bultos").join(" | ")}.
+      <br/>Si es otra medida del mismo turno está bien, se suma. Si es la misma, no la cargues de nuevo.
+    </div>}
     <div style={{background:D,borderRadius:10,padding:"12px 14px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
       <span style={{color:GR,fontSize:12}}>{Number(f.bultos)||0} bultos × {rpb||"?"} rollos × {bpr||"?"} bolsas</span>
       <span style={{color:GN,fontWeight:700,fontSize:18}}>{millares(bolsas)} millares <span style={{color:GR,fontSize:12,fontWeight:400}}>· {fnum(rollos)} rollos · {fnum(bolsas)} bolsas</span></span>
@@ -619,9 +631,13 @@ function UltimasCargas({version}){
 }
 
 // ── Subir la foto de la hoja (la procesa n8n con IA) ─────────────────────────
-function SubirFoto({maquinas,onListo}){
+function SubirFoto({maquinas,onListo,perfil}){
   const [archivo,setArchivo]=useState(null);
   const [maquina,setMaquina]=useState("");
+  // Cierre del turno: apenas entra la hoja se piden los bultos, que es el dato
+  // que faltaba el 80% de las veces cuando había que cargarlo en otra pantalla.
+  const [cerrar,setCerrar]=useState(null);
+  const [avisoCierre,setAvisoCierre]=useState(null);
   // Normalmente la fecha y el turno los lee la IA de la hoja. Estos campos son
   // solo para forzarlos cuando la letra está tan mal que no hay forma.
   const [fecha,setFecha]=useState("");
@@ -668,7 +684,12 @@ function SubirFoto({maquinas,onListo}){
         if(nuevo){ const p=await db.parteporId(nuevo); terminar(mensajeCarga({resultado:"nueva",hoja:p}),true); return; }
         continue;
       }
-      if(e.dato){ terminar(mensajeCarga(e.dato), e.dato.resultado!=="fallida"); return; }
+      if(e.dato){
+        terminar(mensajeCarga(e.dato), e.dato.resultado!=="fallida");
+        const h=e.dato.hoja;
+        if(h&&e.dato.resultado!=="fallida") setCerrar({maquina:h.maquina,fecha:h.fecha,turno:h.turno,medida:h.medida||""});
+        return;
+      }
     }
     terminar({tipo:"aviso",texto:"Pasaron 8 minutos y no se registró nada: lo más probable es que la subida se haya cortado y la hoja no haya llegado.\nMirá \"Últimas cargas\": si la hoja no aparece ahí, volvé a subirla."},false);
   };
@@ -744,7 +765,32 @@ function SubirFoto({maquinas,onListo}){
       {lineas[1]&&<div style={{marginTop:4,fontWeight:400}}>{lineas[1]}</div>}
     </div>}
 
+    {avisoCierre&&<div style={{marginTop:12,padding:11,borderRadius:8,fontSize:12,lineHeight:1.6,
+        background:avisoCierre[1]+"15",color:avisoCierre[1]}}>{avisoCierre[0]}</div>}
+
     <UltimasCargas version={version}/>
+
+    {cerrar&&(()=>{
+      const lista=maquinas.map(m=>({maquina_id:m.id,maquina:m.codigo}));
+      const elegida=lista.find(m=>String(m.maquina)===String(cerrar.maquina));
+      const guardarRollos=async f=>{
+        const r=await dbRollos.guardar({...f,creadoPor:perfil?.nombre||""});
+        if(!r.ok){ setAvisoCierre([r.detalle,RE]); return; }
+        setAvisoCierre(["✓ Turno cerrado: "+millares(f.bolsas)+" millares de bolsas cargados.",GN]);
+        setCerrar(null);
+      };
+      return(<Modal title={"Cerrar el turno — "+tituloMaquina(cerrar.maquina)} onClose={()=>setCerrar(null)}>
+        <p style={{color:GR,fontSize:11,lineHeight:1.5,marginBottom:14}}>
+          La hoja ya quedó cargada. Ahora poné los bultos que salieron en este turno:
+          de ahí salen los millares de bolsas del reporte. Si todavía no los sabés,
+          cerrá esta ventana y cargalos después desde Monitoreo.
+        </p>
+        <RollosForm maquinas={lista}
+          init={{maquinaId:elegida?elegida.maquina_id:"",fecha:cerrar.fecha,turno:cerrar.turno,
+                 medida:cerrar.medida,bultos:"",rpb:"",bpr:""}}
+          onSave={guardarRollos} onClose={()=>setCerrar(null)}/>
+      </Modal>);
+    })()}
   </div>);
 }
 
@@ -789,7 +835,7 @@ function CargarHoja({perfil,onCargado}){
   const celda={...inp,padding:"7px 8px",fontSize:12};
 
   return(<div>
-    <SubirFoto maquinas={maquinas} onListo={onCargado}/>
+    <SubirFoto maquinas={maquinas} onListo={onCargado} perfil={perfil}/>
 
     <h3 style={{color:W,fontSize:13,marginBottom:4,fontWeight:700}}>✍️ O cargala a mano</h3>
     <p style={{color:GR,fontSize:11,marginBottom:16,lineHeight:1.5}}>

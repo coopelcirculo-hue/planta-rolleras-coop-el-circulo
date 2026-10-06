@@ -412,6 +412,14 @@ const dbRollos = {
     if(error) return null;   // falta el SQL 16
     return data||[];
   },
+  // Un turno puede tener varias medidas, así que no se bloquea: se avisa para
+  // que nadie cargue dos veces lo mismo y los millares queden al doble.
+  async yaHay(maquinaId, fecha, turno) {
+    const {data,error} = await SB.from("v_rollos").select("*")
+      .eq("maquina_id",maquinaId).eq("fecha",fecha).eq("turno",turno);
+    return error ? [] : (data||[]);
+  },
+
   async guardar(f) {
     const {data,error} = await SB.from("rollos_turno").insert({
       maquina_id: f.maquinaId, fecha: f.fecha, turno: f.turno, medida: f.medida||"",
