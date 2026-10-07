@@ -1745,6 +1745,15 @@ function Reportes({perfil}){
     return {filas,repartidos,sinMedida};
   };
   const calibre=porMillar();
+  // Semáforo de confianza: un número de 2 turnos, o armado con turnos donde se
+  // hicieron varias medidas, no alcanza para tomar una decisión.
+  const confianza=m=>{
+    const limpios=m.turnos-m.repartidos;
+    if(m.turnos>=6 && limpios>=4) return {txt:"dato firme",color:GN};
+    if(m.turnos>=3 && limpios>=2) return {txt:"tentativo",color:O};
+    return {txt:"poco dato",color:GR};
+  };
+  const firmes=calibre.filas.filter(m=>confianza(m).txt==="dato firme").length;
 
   // Trazabilidad: buscar una bobina por número
   const encontradas=buscar.trim()
@@ -2092,6 +2101,12 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
             que el teórico del producto, se está yendo de espesor. Cambiá el período
             arriba para verlo por día, semana, mes o trimestre.
           </p>
+          {calibre.filas.length>0&&
+            <p style={{color:GR,fontSize:11,lineHeight:1.5,marginBottom:12}}>
+              <span style={{color:firmes?GN:O,fontWeight:700}}>{firmes} de {calibre.filas.length}</span> medidas
+              tienen dato firme (6 turnos o más, la mayoría sin repartir). El resto todavía
+              es para mirar, no para decidir: hacen falta más turnos con los bultos cargados.
+            </p>}
           {calibre.filas.length===0?
             <p style={{color:GR,fontSize:12,lineHeight:1.5}}>
               Para esto hacen falta los dos datos del mismo turno: la hoja y los rollos.
@@ -2100,7 +2115,12 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
            calibre.filas.map((m,i)=>(
             <div key={i} className="fila-reporte" style={{marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8,flexWrap:"wrap"}}>
-                <span style={{color:W,fontWeight:600}}>{m.medida}{m.cliente?" · "+m.cliente:""}</span>
+                <span style={{color:W,fontWeight:600}}>
+                  {m.medida}{m.cliente?" · "+m.cliente:""}
+                  <span style={{color:confianza(m).color,fontSize:10,fontWeight:700,
+                       border:"1px solid "+confianza(m).color+"66",borderRadius:20,padding:"1px 7px",marginLeft:7,
+                       whiteSpace:"nowrap"}}>{confianza(m).txt}</span>
+                </span>
                 <span style={{color:W,fontWeight:700,whiteSpace:"nowrap"}}>{m.real.toFixed(2)} kg/millar</span>
               </div>
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -2108,9 +2128,16 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
                   {m.turnos} turno{m.turnos!==1?"s":""} · {millares(m.bolsas)} millares · {fkg(m.kilos)} kg de bobina
                   {m.repartidos>0?" · "+m.repartidos+" repartido"+(m.repartidos!==1?"s":""):""}
                 </span>
+                {m.teo!=null&&m.desvio<-25&&
+                  <span style={{color:RE,fontSize:10,flexBasis:"100%"}}>
+                    ⚠️ Usó {Math.abs(m.desvio).toFixed(0)}% menos material del que pesa la bolsa: eso no puede pasar.
+                    Revisá los micrones del producto o los bultos cargados en esos turnos.
+                  </span>}
                 {m.teo==null
                   ? <span style={{color:GR,fontSize:10}}>sin producto en el catálogo: cargalo en Monitoreo para comparar</span>
-                  : <span style={{color:Math.abs(m.desvio)>10?RE:(Math.abs(m.desvio)>5?O:GN),fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
+                  : <span style={{color:confianza(m).txt==="poco dato"?GR
+                        :(Math.abs(m.desvio)>10?RE:(Math.abs(m.desvio)>5?O:GN)),
+                      fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
                       teórico {m.teo} · {m.desvio>0?"+":""}{m.desvio.toFixed(0)}%
                     </span>}
               </div>
