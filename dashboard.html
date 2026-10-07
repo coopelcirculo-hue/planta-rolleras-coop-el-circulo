@@ -202,6 +202,204 @@ function EventosFeed({eventos,maquinas,onResolver,onEliminar}){
   </div>);
 }
 
+// ── Stock de insumos: etiquetas, cintas, lo que se gasta ────────────────────
+// Pensado para que el operario descuente en dos toques: el stock sale de sumar
+// los movimientos, así queda quién gastó qué y cuándo.
+const MOTIVOS_GASTO=["Consumo del turno","Rotura / desperdicio","Ajuste de inventario"];
+const MOTIVOS_ENTRADA=["Compra","Devolución","Ajuste de inventario"];
+
+function MovimientoForm({insumo,signo,onGuardar,onClose}){
+  const [cant,setCant]=useState("");
+  const [motivo,setMotivo]=useState(signo<0?MOTIVOS_GASTO[0]:MOTIVOS_ENTRADA[0]);
+  const [guardando,setGuardando]=useState(false);
+  const n=Number(cant)||0;
+  const queda=Number(insumo.stock||0)+signo*n;
+  const guardar=async()=>{ setGuardando(true); await onGuardar(signo*n, motivo); setGuardando(false); };
+  return(<>
+    <Field label={"¿Cuántos "+(insumo.unidad||"unidades")+"?"}>
+      <input type="number" step="any" min="0" style={{...inp,fontSize:20,padding:"14px 12px"}} value={cant}
+        onChange={e=>setCant(e.target.value)} inputMode="decimal" autoFocus
+        onKeyDown={e=>e.key==="Enter"&&n>0&&guardar()}/>
+    </Field>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+      {[1,2,5,10,20].map(x=>(
+        <button key={x} onClick={()=>setCant(String((Number(cant)||0)+x))}
+          style={{...Btn("transparent",W,{padding:"7px 13px",fontSize:12})}}>+{x}</button>))}
+      <button onClick={()=>setCant("")} style={{...Btn("transparent",GR,{padding:"7px 13px",fontSize:12})}}>borrar</button>
+    </div>
+    <Field label="Motivo">
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {(signo<0?MOTIVOS_GASTO:MOTIVOS_ENTRADA).map(m=>(
+          <button key={m} onClick={()=>setMotivo(m)}
+            style={{...Btn(motivo===m?O:"transparent",motivo===m?D:GR,{padding:"6px 12px",fontSize:11})}}>{m}</button>))}
+      </div>
+    </Field>
+    <div style={{background:D,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:13,color:GR}}>
+      Ahora hay <span style={{color:W,fontWeight:700}}>{fnum(insumo.stock)} {insumo.unidad}</span>
+      {n>0&&<> · queda <span style={{color:queda<0?RE:(queda<=Number(insumo.minimo||0)?O:GN),fontWeight:700}}>{fnum(queda)}</span></>}
+      {queda<0&&<div style={{color:RE,marginTop:4,fontSize:12}}>Ojo: quedaría en negativo. Fijate si falta cargar una entrada.</div>}
+    </div>
+    <div style={{display:"flex",gap:10}}>
+      <button onClick={onClose} style={{...Btn("transparent",GR),flex:1}}>Cancelar</button>
+      <button onClick={guardar} disabled={!(n>0)||guardando}
+        style={{...Btn(signo<0?O:GN,D,{opacity:n>0&&!guardando?1:0.5}),flex:1}}>
+        {guardando?"Guardando...":(signo<0?"Descontar":"Agregar")}
+      </button>
+    </div>
+  </>);
+}
+
+function InsumoForm({init,onSave,onClose}){
+  const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
+  const [guardando,setGuardando]=useState(false);
+  const valido=f.nombre.trim();
+  const guardar=async()=>{ setGuardando(true); await onSave(f); setGuardando(false); };
+  return(<>
+    <Field label="Qué es"><input style={inp} value={f.nombre} onChange={e=>s("nombre",e.target.value)} placeholder="Ej: Etiquetas Dottiplast 45x60" autoFocus/></Field>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+      <Field label="Se cuenta en">
+        <input style={inp} value={f.unidad} onChange={e=>s("unidad",e.target.value)} placeholder="rollos, cajas, unidades"/>
+      </Field>
+      <Field label="Avisar cuando baje de">
+        <input type="number" step="any" style={inp} value={f.minimo} onChange={e=>s("minimo",e.target.value)} placeholder="Ej: 5"/>
+      </Field>
+    </div>
+    {!f.id&&<Field label="¿Cuánto hay ahora?">
+      <input type="number" step="any" style={inp} value={f.inicial} onChange={e=>s("inicial",e.target.value)} placeholder="Se guarda como stock inicial"/>
+    </Field>}
+    <Field label="Notas (opcional)"><input style={inp} value={f.notas} onChange={e=>s("notas",e.target.value)} placeholder="Dónde está, proveedor..."/></Field>
+    <div style={{display:"flex",gap:10}}>
+      <button onClick={onClose} style={{...Btn("transparent",GR),flex:1}}>Cancelar</button>
+      <button onClick={guardar} disabled={!valido||guardando} style={{...Btn(O,D,{opacity:valido&&!guardando?1:0.5}),flex:1}}>{guardando?"Guardando...":"Guardar"}</button>
+    </div>
+  </>);
+}
+
+function Insumos({perfil}){
+  const [lista,setLista]=useState(undefined);   // undefined = cargando, null = falta el SQL
+  const [error,setError]=useState("");
+  const [form,setForm]=useState(null);
+  const [mov,setMov]=useState(null);            // {insumo, signo}
+  const [hist,setHist]=useState(null);          // {insumo, filas}
+
+  const cargar=async()=>{
+    const r=await dbInsumos.listar();
+    if(!r.ok){ setError(r.detalle); setLista(null); return; }
+    setError(""); setLista(r.lista);
+  };
+  useEffect(()=>{ cargar(); },[]);
+
+  const guardar=async i=>{
+    const r=await dbInsumos.guardar({...i,creadoPor:perfil?.nombre||""});
+    if(!r.ok){ setError(r.detalle); return; }
+    setError(""); setForm(null); await cargar();
+  };
+  const mover=async(cantidad,motivo)=>{
+    const r=await dbInsumos.mover(mov.insumo.id,cantidad,motivo,perfil?.nombre||"");
+    if(!r.ok){ setError(r.detalle); return; }
+    setError(""); setMov(null); await cargar();
+  };
+  const borrar=async i=>{
+    if(!confirm("¿Sacar \""+i.nombre+"\" del stock? Se borra también su historial de movimientos."))return;
+    const r=await dbInsumos.borrar(i.id);
+    if(!r.ok){ setError(r.detalle); return; }
+    await cargar();
+  };
+  const verHistorial=async i=>{
+    setHist({insumo:i,filas:null});
+    setHist({insumo:i,filas:await dbInsumos.movimientos(i.id)});
+  };
+
+  const filas=lista||[];
+  const bajos=filas.filter(i=>Number(i.stock)<=Number(i.minimo||0));
+
+  return(<div style={{marginTop:28}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10,flexWrap:"wrap"}}>
+      <div>
+        <h3 style={{color:W,fontSize:13,margin:0,fontWeight:700}}>📦 Stock de insumos</h3>
+        <p style={{color:GR,fontSize:11,margin:"4px 0 0",lineHeight:1.5}}>
+          Etiquetas, cintas y todo lo que se gasta. Cada vez que se usa algo, se descuenta acá.
+        </p>
+      </div>
+      <button onClick={()=>setForm({nombre:"",unidad:"unidades",minimo:"",inicial:"",notas:""})}
+        disabled={lista===null} style={{...Btn(O,D,{fontSize:12,padding:"7px 14px",opacity:lista===null?0.5:1})}}>+ Agregar insumo</button>
+    </div>
+
+    {error&&<div style={{color:O,fontSize:12,marginBottom:12,padding:10,background:O+"15",borderRadius:8}}>{error}</div>}
+
+    {bajos.length>0&&<div style={{color:O,fontSize:12,marginBottom:12,padding:"10px 12px",
+         background:O+"15",border:"1px solid "+O+"55",borderRadius:8,lineHeight:1.5}}>
+      🛒 Hay que pedir: {bajos.map(i=>i.nombre+" ("+fnum(i.stock)+" "+i.unidad+")").join(" · ")}
+    </div>}
+
+    {lista===undefined?<p style={{color:GR,fontSize:12}}>Cargando...</p>:
+     lista===null?null:
+     filas.length===0?(
+      <div style={{textAlign:"center",padding:30,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12,fontSize:12,lineHeight:1.6}}>
+        Todavía no hay insumos cargados. Agregá el primero: por ejemplo las etiquetas,
+        en qué se cuentan (rollos, cajas) y cuánto hay ahora.
+      </div>
+     ):(
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:12}}>
+        {filas.map(i=>{
+          const bajo=Number(i.stock)<=Number(i.minimo||0);
+          return(<div key={i.id} style={{background:CA,border:"1px solid "+(bajo?O+"88":BR),borderRadius:12,padding:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+              <div style={{color:W,fontWeight:700,fontSize:12,flex:1,lineHeight:1.4}}>{i.nombre}</div>
+              <div style={{display:"flex",gap:4,flexShrink:0}}>
+                <button onClick={()=>verHistorial(i)} title="Movimientos" style={{...Btn("transparent",GR,{padding:"3px 7px",fontSize:11})}}>🕘</button>
+                <button onClick={()=>setForm({id:i.id,nombre:i.nombre,unidad:i.unidad,minimo:i.minimo,notas:i.notas||"",inicial:""})}
+                  style={{...Btn("transparent",GR,{padding:"3px 7px",fontSize:11})}}>✏️</button>
+                <button onClick={()=>borrar(i)} style={{...Btn("transparent",RE,{padding:"3px 7px",fontSize:11,borderColor:RE+"55"})}}>✕</button>
+              </div>
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",gap:6,margin:"8px 0 2px"}}>
+              <span style={{fontFamily:"Orbitron,sans-serif",fontSize:24,fontWeight:700,
+                color:Number(i.stock)<0?RE:(bajo?O:GN)}}>{fnum(i.stock)}</span>
+              <span style={{color:GR,fontSize:12}}>{i.unidad}</span>
+            </div>
+            <div style={{color:bajo?O:GR,fontSize:10,marginBottom:10}}>
+              {bajo?"⚠️ hay que pedir (mínimo "+fnum(i.minimo)+")":"mínimo "+fnum(i.minimo)}
+              {i.ultimo_movimiento?" · último "+fdate(i.ultimo_movimiento):""}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setMov({insumo:i,signo:-1})} style={{...Btn(O,D,{flex:1,fontSize:12,padding:"9px"})}}>− Gasté</button>
+              <button onClick={()=>setMov({insumo:i,signo:1})} style={{...Btn("transparent",GN,{flex:1,fontSize:12,padding:"9px",borderColor:GN})}}>+ Entró</button>
+            </div>
+          </div>);
+        })}
+      </div>
+     )}
+
+    {form&&<Modal title={form.id?"Editar insumo":"Nuevo insumo"} onClose={()=>{setForm(null);setError("");}}>
+      <InsumoForm init={form} onSave={guardar} onClose={()=>{setForm(null);setError("");}}/>
+    </Modal>}
+
+    {mov&&<Modal title={(mov.signo<0?"Descontar — ":"Agregar — ")+mov.insumo.nombre} onClose={()=>setMov(null)}>
+      <MovimientoForm insumo={mov.insumo} signo={mov.signo} onGuardar={mover} onClose={()=>setMov(null)}/>
+    </Modal>}
+
+    {hist&&<Modal title={"Movimientos — "+hist.insumo.nombre} onClose={()=>setHist(null)}>
+      {hist.filas===null?<p style={{color:GR,fontSize:12}}>Cargando...</p>:
+       hist.filas.length===0?<p style={{color:GR,fontSize:12}}>Todavía no hay movimientos.</p>:
+       <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:400,overflowY:"auto"}}>
+        {hist.filas.map(m=>(
+          <div key={m.id} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:12,
+               borderLeft:"3px solid "+(m.cantidad<0?O:GN),paddingLeft:10}}>
+            <div>
+              <div style={{color:m.cantidad<0?O:GN,fontWeight:700}}>
+                {m.cantidad<0?"":"+"}{fnum(m.cantidad)} {hist.insumo.unidad}
+              </div>
+              <div style={{color:GR,fontSize:11}}>{m.motivo||"—"}{m.creado_por?" · "+m.creado_por:""}</div>
+            </div>
+            <span style={{color:GR,fontSize:11,whiteSpace:"nowrap"}}>{fhora(m.creado_en)}</span>
+          </div>
+        ))}
+       </div>}
+    </Modal>}
+  </div>);
+}
+
 // ── Monitoreo en vivo ────────────────────────────────────────────────────────
 function duracion(desde,hasta){
   const min=Math.max(0,Math.floor(((hasta?new Date(hasta):new Date())-new Date(desde))/60000));
@@ -749,6 +947,53 @@ function Productos({perfil}){
   </div>);
 }
 
+// Turnos de los últimos días que se pasaron de scrap, para ir a preguntar qué
+// pasó mientras todavía se acuerdan.
+function AvisoScrap(){
+  const [turnos,setTurnos]=useState(null);
+  useEffect(()=>{
+    let vivo=true;
+    (async()=>{
+      const d=await db.loadProduccion(haceDiasIso(7),hoyIso());
+      if(!vivo) return;
+      setTurnos((d.producciones||[]).map(p=>({...p,
+        scrap:(+p.scrap_empalme||0)+(+p.scrap_rollo||0),
+        pct:p.kilos?100*((+p.scrap_empalme||0)+(+p.scrap_rollo||0))/p.kilos:0}))
+        .filter(p=>p.pct>=SCRAP_ALTO).sort((a,b)=>b.pct-a.pct));
+    })();
+    return ()=>{ vivo=false; };
+  },[]);
+  if(turnos===null) return null;
+  if(turnos.length===0) return(
+    <div style={{color:GN,fontSize:12,marginBottom:16,padding:"10px 12px",background:GN+"12",borderRadius:8}}>
+      ✓ Ningún turno pasó el {SCRAP_ALTO}% de scrap en los últimos 7 días.
+    </div>);
+  const graves=turnos.filter(t=>t.pct>=SCRAP_GRAVE).length;
+  return(<div style={{marginBottom:16,padding:"12px 14px",borderRadius:10,
+       background:(graves?RE:O)+"12",border:"1px solid "+(graves?RE:O)+"55"}}>
+    <div style={{color:graves?RE:O,fontWeight:700,fontSize:12,marginBottom:8}}>
+      ⚠️ Scrap alto en {turnos.length} turno{turnos.length!==1?"s":""} de los últimos 7 días
+      {graves?" · "+graves+" por encima del "+SCRAP_GRAVE+"%":""}
+    </div>
+    {turnos.slice(0,6).map((t,i)=>(
+      <div key={i} style={{display:"flex",justifyContent:"space-between",gap:8,fontSize:12,
+           padding:"4px 0",flexWrap:"wrap"}}>
+        <span style={{color:W}}>
+          {tituloMaquina(t.maquina)} · {fdate(t.fecha)} · {t.turno}
+          {t.operario?<span style={{color:GR}}> · {operarioRollera(t.operario)}</span>:null}
+        </span>
+        <span style={{color:nivelScrap(t.pct)==="grave"?RE:O,fontWeight:700,whiteSpace:"nowrap"}}>
+          {fkg(t.scrap)} kg · {t.pct.toFixed(1)}%
+        </span>
+      </div>
+    ))}
+    <div style={{color:GR,fontSize:10,marginTop:6,lineHeight:1.5}}>
+      Lo normal en la planta es entre 2 y 5%. Mirá esos turnos en Reportes para ver la medida
+      y el operario, y preguntá antes de que se olviden.
+    </div>
+  </div>);
+}
+
 function Monitoreo({perfil}){
   const [filas,setFilas]=useState([]);
   const [cargando,setCargando]=useState(true);
@@ -814,6 +1059,8 @@ function Monitoreo({perfil}){
     </div>
 
     {error&&<div style={{color:RE,fontSize:12,marginBottom:14,padding:10,background:RE+"15",borderRadius:8}}>{error}</div>}
+
+    <AvisoScrap/>
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:10,flexWrap:"wrap"}}>
       <h3 style={{color:W,fontSize:13,margin:0,fontWeight:700}}>🏭 Estado de las máquinas</h3>
@@ -2310,6 +2557,7 @@ function App(){
             onNuevoEvento={m=>setModalEvento({maquinaId:m.id,tipo:"rotura",descripcion:"",fecha:hoyIso()})}
           />
           <EventosFeed eventos={eventos} maquinas={maquinas} onResolver={resolver} onEliminar={eliminarEvento}/>
+          <Insumos perfil={perfil}/>
         </>)}
         {tab==="reportes"&&<Reportes perfil={perfil}/>}
         {tab==="cargar"&&<CargarHoja perfil={perfil} onCargado={()=>{}}/>}

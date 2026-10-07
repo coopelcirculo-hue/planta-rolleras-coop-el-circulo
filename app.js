@@ -383,6 +383,11 @@ const db = {
   },
 };
 
+// Scrap: entre 2 y 5% es lo normal en la planta. De 5 para arriba hay que
+// mirar el turno, y de 8 para arriba es para ir a buscar qué pasó.
+const SCRAP_ALTO = 5, SCRAP_GRAVE = 8;
+const nivelScrap = pct => pct>=SCRAP_GRAVE ? "grave" : pct>=SCRAP_ALTO ? "alto" : "ok";
+
 // ── Constantes de datos ───────────────────────────────────────────────────────
 const TIPOS_EVENTO = [
   {id:"rotura",label:"Rotura / Falla",icon:"🔴",color:RE},
@@ -559,6 +564,58 @@ const dbProductos = {
       const n = medida.split("x").map(Number);
       return {medida, veces, ancho:n[0], largo:n[1], bolsasPorRollo:n[2], rollosPorBulto:n[3]};
     }).sort((a,b)=>b.veces-a.veces);
+  },
+};
+
+// ── Stock de insumos (SQL 23) ───────────────────────────────────────────────
+// El stock sale de sumar los movimientos, así queda el historial de quién gastó
+// qué. Lo que se gasta va en negativo y lo que entra en positivo.
+const FALTA_SQL23 = "Falta correr el SQL 23 (stock de insumos) en Supabase.";
+const faltaTabla = (error, aviso, tabla) =>
+  new RegExp(tabla+"|42P01|PGRST205").test(error.message+error.code) ? aviso : error.message;
+
+const dbInsumos = {
+  async listar() {
+    const {data,error} = await SB.from("v_insumos").select("*").eq("empresa",EMPRESA)
+      .order("nombre").limit(300);
+    if(error) return {ok:false, detalle:faltaTabla(error,FALTA_SQL23,"insumos")};
+    return {ok:true, lista:(data||[]).filter(i=>i.activo!==false)};
+  },
+  async guardar(i) {
+    const fila = {empresa:EMPRESA, nombre:(i.nombre||"").trim(), unidad:(i.unidad||"unidades").trim(),
+                  minimo:Number(i.minimo)||0, notas:i.notas||"", creado_por:i.creadoPor||""};
+    const {data,error} = i.id
+      ? await SB.from("insumos").update(fila).eq("id",i.id).select()
+      : await SB.from("insumos").insert(fila).select();
+    if(error) return {ok:false, detalle: error.code==="23505"
+      ? "Ya hay un insumo con ese nombre." : faltaTabla(error,FALTA_SQL23,"insumos")};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    // Si es nuevo y pusieron cuánto hay, queda como primer movimiento.
+    if(!i.id && Number(i.inicial)) {
+      await SB.from("movimientos_insumo").insert({insumo_id:data[0].id, cantidad:Number(i.inicial),
+        motivo:"Stock inicial", creado_por:i.creadoPor||""});
+    }
+    return {ok:true};
+  },
+  async borrar(id) {
+    const {data,error} = await SB.from("insumos").delete().eq("id",id).select();
+    if(error) return {ok:false, detalle:error.message};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+  // cantidad en positivo entra, en negativo se gasta
+  async mover(insumoId, cantidad, motivo, creadoPor) {
+    const {data,error} = await SB.from("movimientos_insumo").insert({
+      insumo_id:insumoId, cantidad:Number(cantidad), motivo:motivo||"", creado_por:creadoPor||""
+    }).select();
+    if(error) return {ok:false, detalle:faltaTabla(error,FALTA_SQL23,"movimientos_insumo")};
+    if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
+    return {ok:true};
+  },
+  async movimientos(insumoId) {
+    const {data} = await SB.from("movimientos_insumo").select("*")
+      .eq("insumo_id",insumoId).order("creado_en",{ascending:false}).limit(60);
+    return data||[];
   },
 };
 

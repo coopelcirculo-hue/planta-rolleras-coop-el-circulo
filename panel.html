@@ -163,6 +163,11 @@ function Panel(){
       </div>
     </div>
 
+    {hoja.kilos>0&&pctScrap>=SCRAP_ALTO&&
+      <div className="alerta" style={{background:pctScrap>=SCRAP_GRAVE?"#b91c1c":"#b45309"}}>
+        ⚠️ SCRAP DEL DÍA {pctScrap.toFixed(1)}% · lo normal es hasta {SCRAP_ALTO}% · {fkg(hoja.scrap)} kg tirados
+      </div>}
+
     {paradasLargas.length>0&&
       <div className="alerta">
         ⚠️ {paradasLargas.map(f=>tituloMaquina(f.maquina)+" parada hace "+desdeCorto(f.inicio)+(f.motivo?" ("+f.motivo+")":"")).join("   ·   ")}
