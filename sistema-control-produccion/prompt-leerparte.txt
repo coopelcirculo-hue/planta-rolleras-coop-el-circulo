@@ -14,3 +14,30 @@ INSTRUCCIONES:
 7. El scrap esta al pie de la hoja, en dos casilleros separados: empalme y rollo
 8. Una bobina pesa entre 15 y 90 kilos. En la hoja el peso se escribe con
    coma o punto: "45.650" son 45 kilos con 650 gramos. Copialo tal cual.
+
+DEVUELVE SOLO JSON valido (sin backticks ni explicaciones):
+
+{
+  "cabecera": {
+    "maquina": "",
+    "fecha": "",
+    "turno": "Dia o Noche",
+    "operario": ""
+  },
+  "tabla_bobinas": [
+    {
+      "numero_m": "",
+      "numero_b": "",
+      "peso": "",
+      "iniciales": "",
+      "estado": "Bien o Mal",
+      "defectos": []
+    }
+  ],
+  "observaciones": "",
+  "scrap_empalme": "",
+  "scrap_rollo": "",
+  "medida": "",
+  "filas": "",
+  "bultos": ""
+}
