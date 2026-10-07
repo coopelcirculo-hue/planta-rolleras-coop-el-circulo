@@ -551,7 +551,7 @@ function SelectorProducto({productos,valor,onElegir,vacio}){
     <option value="">{vacio||"Elegir producto..."}</option>
     {Object.entries(porCliente).sort().map(([c,ps])=>(
       <optgroup key={c} label={c}>
-        {ps.map(p=><option key={p.id} value={p.id}>{p.medida}{p.micras?" · "+p.micras+" micrones":""}</option>)}
+        {ps.map(p=><option key={p.id} value={p.id}>{p.medida}{p.color?" · "+p.color:""}{p.micras?" · "+p.micras+" micrones":""}</option>)}
       </optgroup>
     ))}
   </select>);
@@ -560,6 +560,7 @@ function SelectorProducto({productos,valor,onElegir,vacio}){
 function ProductoForm({init,clientes,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const [guardando,setGuardando]=useState(false);
+  const esNegro=(f.color||"").trim().toUpperCase()==="NEGRO";
   const teorico=pesoTeoricoBolsa(f.ancho,f.largo,f.micras,f.material);
   const peso=f.pesoBolsa!==""&&f.pesoBolsa!=null?Number(f.pesoBolsa):teorico;
   const medida=textoMedida(f);
@@ -581,13 +582,27 @@ function ProductoForm({init,clientes,onSave,onClose}){
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
       <Field label="Micrones (espesor)"><input type="number" step="0.5" style={inp} value={f.micras} onChange={e=>s("micras",e.target.value)} placeholder="25"/></Field>
-      <Field label="Material">
+      <Field label="Color">
         <div style={{display:"flex",gap:6}}>
-          {["PEBD","PEAD"].map(m=>(
-            <button key={m} onClick={()=>s("material",m)} style={{...Btn(f.material===m?O:"transparent",f.material===m?D:GR,{flex:1,fontSize:12})}}>{m}</button>))}
+          <button onClick={()=>s("color","NEGRO")}
+            style={{...Btn(esNegro?O:"transparent",esNegro?D:GR,{flex:1,fontSize:12})}}>⬛ Negro</button>
+          <button onClick={()=>s("color",esNegro||!f.color?" ":f.color)}
+            style={{...Btn(!esNegro&&f.color?O:"transparent",!esNegro&&f.color?D:GR,{flex:1,fontSize:12})}}>🎨 Color</button>
         </div>
       </Field>
     </div>
+    {!esNegro&&f.color!==""&&f.color!=null&&<Field label="¿Qué color?">
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        {["BLANCO","ROJO","AZUL","VERDE","AMARILLO","NARANJA","CELESTE","NATURAL"].map(c=>(
+          <button key={c} onClick={()=>s("color",c)} style={{...Btn(f.color.trim()===c?O:"transparent",f.color.trim()===c?D:GR,{padding:"5px 11px",fontSize:11})}}>
+            <span style={{display:"inline-block",width:9,height:9,borderRadius:9,background:colorCss(c),
+              border:"1px solid "+BR,marginRight:5}}/>{c}
+          </button>
+        ))}
+      </div>
+      <input style={inp} value={f.color.trim()} onChange={e=>s("color",e.target.value||" ")} placeholder="O escribí el color"/>
+    </Field>}
+
     <Field label="Peso por bolsa (gramos) — se calcula solo, se puede corregir">
       <input type="number" step="0.01" style={inp} value={f.pesoBolsa} onChange={e=>s("pesoBolsa",e.target.value)}
         placeholder={teorico?String(teorico)+" (calculado)":"primero cargá medida y micrones"}/>
@@ -595,7 +610,10 @@ function ProductoForm({init,clientes,onSave,onClose}){
     <Field label="Notas (opcional)"><input style={inp} value={f.notas} onChange={e=>s("notas",e.target.value)} placeholder="Ej: va a granel"/></Field>
 
     <div style={{background:D,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:12,lineHeight:1.7}}>
-      <div style={{color:GR}}>Queda guardado como <span style={{color:O,fontWeight:700}}>{medida||"—"}</span></div>
+      <div style={{color:GR}}>Queda guardado como <span style={{color:O,fontWeight:700}}>{medida||"—"}</span>
+        {f.color&&f.color.trim()?<span> · <span style={{display:"inline-block",width:9,height:9,borderRadius:9,
+          background:colorCss(f.color),border:"1px solid "+BR,marginRight:4}}/>{f.color.trim().toUpperCase()}</span>:
+          <span style={{color:O}}> · falta el color</span>}</div>
       {peso?<div style={{color:GR}}>Cada bolsa pesa <span style={{color:W,fontWeight:700}}>{peso} g</span> ·
         un millar de bolsas son <span style={{color:GN,fontWeight:700}}>{peso} kg</span> de material</div>
         :<div style={{color:GR}}>Cargá los micrones para saber el peso de la bolsa.</div>}
@@ -636,11 +654,11 @@ function Productos({perfil}){
     await cargar();
   };
   const nuevo=cliente=>setForm({cliente:cliente||"",ancho:"",largo:"",bolsasPorRollo:"",
-    rollosPorBulto:"",micras:"",material:"PEBD",pesoBolsa:"",notas:"",activo:true});
+    rollosPorBulto:"",micras:"",material:"PEBD",color:"NEGRO",pesoBolsa:"",notas:"",activo:true});
   const editar=p=>setForm({id:p.id,cliente:p.cliente,ancho:p.ancho_cm??"",largo:p.largo_cm??"",
     bolsasPorRollo:p.bolsas_por_rollo??"",rollosPorBulto:p.rollos_por_bulto??"",
-    micras:p.micras??"",material:p.material||"PEBD",pesoBolsa:p.peso_bolsa_g??"",
-    notas:p.notas||"",activo:p.activo});
+    micras:p.micras??"",material:p.material||"PEBD",color:p.color||"NEGRO",
+    pesoBolsa:p.peso_bolsa_g??"",notas:p.notas||"",activo:p.activo});
 
   const filas=lista||[];
   const clientes=[...new Set(filas.map(p=>p.cliente))].sort();
@@ -676,7 +694,7 @@ function Productos({perfil}){
           {faltan.map(s=>(
             <button key={s.medida} onClick={()=>setForm({cliente:"",ancho:s.ancho,largo:s.largo,
                 bolsasPorRollo:s.bolsasPorRollo,rollosPorBulto:s.rollosPorBulto,micras:"",
-                material:"PEBD",pesoBolsa:"",notas:"",activo:true})}
+                material:"PEBD",color:"NEGRO",pesoBolsa:"",notas:"",activo:true})}
               style={{...Btn("transparent",W,{fontSize:11,padding:"6px 11px"})}}>
               + {s.medida} <span style={{color:GR}}>· {s.veces} {s.veces===1?"vez":"veces"}</span>
             </button>
@@ -704,7 +722,12 @@ function Productos({perfil}){
               {ps.map((p,i)=>(
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,fontSize:12,padding:"8px 0",
                      borderTop:i?"1px solid "+BR:"none",flexWrap:"wrap"}}>
-                  <span style={{color:W,fontWeight:700,minWidth:110}}>{p.medida}</span>
+                  <span style={{color:W,fontWeight:700,minWidth:110}}>
+                    <span style={{display:"inline-block",width:10,height:10,borderRadius:10,
+                      background:colorCss(p.color),border:"1px solid "+BR,marginRight:6}}/>
+                    {p.medida}
+                  </span>
+                  <span style={{color:GR,fontSize:11,minWidth:70}}>{p.color||"sin color"}</span>
                   <span style={{color:GR,flex:1,minWidth:150}}>
                     {p.bolsas_por_rollo||"?"} bolsas × rollo · {p.rollos_por_bulto||"?"} rollos × bulto
                     {p.micras?" · "+p.micras+" micrones "+(p.material||""):""}

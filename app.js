@@ -488,6 +488,13 @@ const pesoTeoricoBolsa = (ancho, largo, micras, material) => {
   return +(a * l * 2 * m / 10000 * (DENSIDAD[material]||0.92)).toFixed(2);
 };
 
+// Colores de bolsa: NEGRO es el más común y el resto se escribe. El puntito de
+// color en la lista ayuda a encontrar el producto de un vistazo.
+const COLOR_CSS = {NEGRO:"#111827", BLANCO:"#f8fafc", NATURAL:"#e5e7eb", TRANSPARENTE:"#e5e7eb",
+  ROJO:"#dc2626", AZUL:"#2563eb", VERDE:"#16a34a", AMARILLO:"#eab308", NARANJA:"#ea580c",
+  VIOLETA:"#7c3aed", ROSA:"#ec4899", GRIS:"#6b7280", CELESTE:"#38bdf8", MARRON:"#92400e"};
+const colorCss = c => COLOR_CSS[String(c||"").trim().toUpperCase()] || "#9CA3AF";
+
 // El texto de la medida, siempre escrito igual: "45x60x20x24"
 const textoMedida = p => [p.ancho,p.largo,p.bolsasPorRollo,p.rollosPorBulto]
   .filter(x=>x!=="" && x!=null).join("x");
@@ -509,6 +516,7 @@ const dbProductos = {
       rollos_por_bulto: Number(p.rollosPorBulto)||null,
       micras: Number(p.micras)||null,
       material: p.material||"PEBD",
+      color: (p.color||"").trim().toUpperCase(),
       peso_bolsa_g: p.pesoBolsa!=="" && p.pesoBolsa!=null ? Number(p.pesoBolsa)
                     : pesoTeoricoBolsa(p.ancho,p.largo,p.micras,p.material),
       notas: p.notas||"", activo: p.activo!==false, creado_por: p.creadoPor||""
@@ -516,8 +524,10 @@ const dbProductos = {
     const {data,error} = p.id
       ? await SB.from("productos").update(fila).eq("id",p.id).select()
       : await SB.from("productos").insert(fila).select();
-    if(error) return {ok:false, detalle: error.code==="23505"
-      ? "Ese cliente ya tiene cargada esa misma medida."
+    if(error) return {ok:false, detalle: /color/.test(error.message)
+      ? "Falta correr el SQL 22 (color de producto) en Supabase."
+      : error.code==="23505"
+      ? "Ese cliente ya tiene cargada esa misma medida en ese color."
       : /productos|42P01/.test(error.message+error.code) ? FALTA_SQL21 : error.message};
     if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
     return {ok:true};
