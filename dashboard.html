@@ -1478,6 +1478,8 @@ function Reportes({perfil}){
   const aplicar=p=>{
     setPeriodo(p);
     const hoy=new Date();
+    if(p==="hoy"){ setDesde(hoyIso()); setHasta(hoyIso()); }
+    if(p==="ayer"){ setDesde(haceDiasIso(1)); setHasta(haceDiasIso(1)); }
     if(p==="semana"){ setDesde(lunesIso(0)); setHasta(sabadoIso(0)); }
     if(p==="semanaPasada"){ setDesde(lunesIso(-1)); setHasta(sabadoIso(-1)); }
     if(p==="mes"){ setDesde(haceDiasIso(30)); setHasta(hoyIso()); }
@@ -1659,26 +1661,54 @@ function Reportes({perfil}){
   // espesor o se tiró más material del que figura como scrap.
   const claveMedida=m=>{ const n=numerosMedida(m); return n.length>=4?n.slice(0,4).join("x"):null; };
   const porMillar=()=>{
-    // Primero, cuántas bolsas salieron en cada turno y con qué medida.
+    // Cuántas bolsas salieron en cada turno, separadas por medida.
     const turnos={};
     for(const r of rollosF){
+      const cm=claveMedida(r.medida); if(!cm) continue;
       const k=r.maquina+"|"+r.fecha+"|"+r.turno;
-      turnos[k]=turnos[k]||{bolsas:0,medidas:{}};
-      turnos[k].bolsas+=bolsasDe(r);
-      const cm=claveMedida(r.medida); if(cm) turnos[k].medidas[cm]=true;
+      turnos[k]=turnos[k]||{};
+      turnos[k][cm]=(turnos[k][cm]||0)+bolsasDe(r);
     }
-    // Después, los kilos de la hoja de ese mismo turno. Si en el turno se
-    // hicieron dos medidas distintas no se puede repartir: ese turno no entra.
-    const porMed={}; let mezclados=0;
+    const delCatalogo=cm=>{
+      const prod=productos.find(pr=>claveMedida(pr.medida)===cm);
+      return prod&&prod.peso_bolsa_g?Number(prod.peso_bolsa_g):null;
+    };
+    // Primera vuelta: solo los turnos de una sola medida. Sirven de referencia
+    // para repartir después los turnos en los que se hicieron dos o más.
+    const solo={};
+    for(const p of producciones){
+      const t=turnos[p.maquina+"|"+p.fecha+"|"+p.turno]; if(!t) continue;
+      const ms=Object.keys(t); if(ms.length!==1) continue;
+      const cm=ms[0]; if(!(t[cm]>0)) continue;
+      solo[cm]=solo[cm]||{kilos:0,bolsas:0};
+      solo[cm].kilos+=Math.max(0,(+p.kilos||0)-((+p.scrap_empalme||0)+(+p.scrap_rollo||0)));
+      solo[cm].bolsas+=t[cm];
+    }
+    // Referencia de cuánto pesa el millar de cada medida: primero el catálogo,
+    // si no está, lo que dieron los turnos de esa sola medida.
+    const refer=cm=>delCatalogo(cm) ||
+      (solo[cm]&&solo[cm].bolsas ? 1000*solo[cm].kilos/solo[cm].bolsas : null);
+
+    // Segunda vuelta: entran TODOS los turnos. Si en uno se hicieron varias
+    // medidas, los kilos de la hoja se reparten entre ellas según cuántas
+    // bolsas salieron de cada una y cuánto pesa cada bolsa.
+    const porMed={}; let repartidos=0, sinMedida=0;
     for(const p of producciones){
       const t=turnos[p.maquina+"|"+p.fecha+"|"+p.turno];
-      if(!t||t.bolsas<=0) continue;
-      const medidas=Object.keys(t.medidas);
-      if(medidas.length!==1){ mezclados++; continue; }
-      const cm=medidas[0];
-      porMed[cm]=porMed[cm]||{medida:cm,turnos:0,kilos:0,bolsas:0,scrap:0};
-      porMed[cm].turnos++; porMed[cm].kilos+=(+p.kilos||0); porMed[cm].bolsas+=t.bolsas;
-      porMed[cm].scrap+=(+p.scrap_empalme||0)+(+p.scrap_rollo||0);
+      if(!t){ sinMedida++; continue; }
+      const ms=Object.keys(t).filter(cm=>t[cm]>0); if(!ms.length) continue;
+      const pesos=ms.map(cm=>t[cm]*(refer(cm)||1));
+      const suma=pesos.reduce((a,b)=>a+b,0)||1;
+      if(ms.length>1) repartidos++;
+      ms.forEach((cm,i)=>{
+        const parte=pesos[i]/suma;
+        porMed[cm]=porMed[cm]||{medida:cm,turnos:0,repartidos:0,kilos:0,bolsas:0,scrap:0};
+        porMed[cm].turnos++;
+        if(ms.length>1) porMed[cm].repartidos++;
+        porMed[cm].kilos+=(+p.kilos||0)*parte;
+        porMed[cm].scrap+=((+p.scrap_empalme||0)+(+p.scrap_rollo||0))*parte;
+        porMed[cm].bolsas+=t[cm];
+      });
     }
     const filas=Object.values(porMed).map(x=>{
       const prod=productos.find(pr=>claveMedida(pr.medida)===x.medida);
@@ -1689,7 +1719,7 @@ function Reportes({perfil}){
       return {...x,real,bruto,teo,cliente:prod?prod.cliente:"",
               desvio:teo?100*(real-teo)/teo:null};
     }).sort((a,b)=>b.bolsas-a.bolsas);
-    return {filas,mezclados};
+    return {filas,repartidos,sinMedida};
   };
   const calibre=porMillar();
 
@@ -1790,7 +1820,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
 
   return(<div ref={hojaRef}>
     <div className="no-imprimir" style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14,alignItems:"center"}}>
-      {[["semana","Esta semana"],["semanaPasada","Semana pasada"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
+      {[["hoy","Hoy"],["ayer","Ayer"],["semana","Esta semana"],["semanaPasada","Semana pasada"],["mes","Mes"],["trimestre","Trimestre"],["rango","Rango"]].map(([id,lbl])=>(
         <button key={id} onClick={()=>aplicar(id)} style={{...Btn(periodo===id?O:"transparent",periodo===id?D:GR,{padding:"7px 16px",fontSize:12})}}>{lbl}</button>
       ))}
       <button onClick={imprimir} title={"En el diálogo de impresión desactivá \"Encabezados y pies de página\": el pie ya lo pone el reporte"} style={{...Btn("transparent",W,{padding:"7px 16px",fontSize:12,marginLeft:"auto"})}}>🖨️ Imprimir</button>
@@ -2036,7 +2066,8 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
         <Caja titulo="📐 Kilos por millar y calibre">
           <p style={{color:GR,fontSize:11,lineHeight:1.5,marginBottom:12}}>
             Cuánto material se usó por cada mil bolsas, ya descontado el scrap. Si da más
-            que el teórico del producto, se está yendo de espesor.
+            que el teórico del producto, se está yendo de espesor. Cambiá el período
+            arriba para verlo por día, semana, mes o trimestre.
           </p>
           {calibre.filas.length===0?
             <p style={{color:GR,fontSize:12,lineHeight:1.5}}>
@@ -2052,6 +2083,7 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{color:GR,fontSize:10,flex:1,minWidth:170}}>
                   {m.turnos} turno{m.turnos!==1?"s":""} · {millares(m.bolsas)} millares · {fkg(m.kilos)} kg de bobina
+                  {m.repartidos>0?" · "+m.repartidos+" repartido"+(m.repartidos!==1?"s":""):""}
                 </span>
                 {m.teo==null
                   ? <span style={{color:GR,fontSize:10}}>sin producto en el catálogo: cargalo en Monitoreo para comparar</span>
@@ -2061,9 +2093,14 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
               </div>
             </div>
           ))}
-          {calibre.mezclados>0&&<p style={{color:GR,fontSize:10,marginTop:8,lineHeight:1.5}}>
-            {calibre.mezclados} turno{calibre.mezclados!==1?"s":""} con dos medidas distintas no entra{calibre.mezclados!==1?"n":""} en la cuenta:
-            no se puede saber cuántos kilos fueron a cada una.
+          {calibre.repartidos>0&&<p style={{color:GR,fontSize:10,marginTop:8,lineHeight:1.5}}>
+            En {calibre.repartidos} turno{calibre.repartidos!==1?"s":""} se hizo más de una medida: los kilos de esa hoja se
+            repartieron según cuántas bolsas salieron de cada una y cuánto pesa cada bolsa
+            (del catálogo, o del promedio de los turnos de esa sola medida). Esos turnos
+            figuran como "repartidos" y son una estimación.
+          </p>}
+          {calibre.sinMedida>0&&<p style={{color:GR,fontSize:10,marginTop:6,lineHeight:1.5}}>
+            {calibre.sinMedida} turno{calibre.sinMedida!==1?"s":""} sin rollos cargados no entra{calibre.sinMedida!==1?"n":""}: falta el dato de los bultos.
           </p>}
         </Caja>
 
