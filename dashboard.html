@@ -758,7 +758,18 @@ function SelectorProducto({productos,valor,onElegir,vacio}){
 function ProductoForm({init,clientes,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const [guardando,setGuardando]=useState(false);
+  const [subiendo,setSubiendo]=useState("");
+  const refFoto=useRef(null), refCam=useRef(null);
   const esNegro=(f.color||"").trim().toUpperCase()==="NEGRO";
+  const elegirFoto=async e=>{
+    const arch=e.target.files?.[0]; if(!arch) return;
+    setSubiendo("Subiendo la foto...");
+    const r=await dbProductos.subirFoto(arch, f.cliente);
+    setSubiendo(r.ok?"":r.detalle);
+    if(r.ok) s("foto", r.url);
+    if(refFoto.current) refFoto.current.value="";
+    if(refCam.current) refCam.current.value="";
+  };
   const paqCalc=(Number(f.paqCama)||0)*(Number(f.camas)||0)||null;
   const teorico=pesoTeoricoBolsa(f.ancho,f.largo,f.micras,f.material);
   const peso=f.pesoBolsa!==""&&f.pesoBolsa!=null?Number(f.pesoBolsa):teorico;
@@ -806,6 +817,23 @@ function ProductoForm({init,clientes,onSave,onClose}){
       <input type="number" step="0.01" style={inp} value={f.pesoBolsa} onChange={e=>s("pesoBolsa",e.target.value)}
         placeholder={teorico?String(teorico)+" (calculado)":"primero cargá medida y micrones"}/>
     </Field>
+    <Field label="Foto de la bolsa (opcional)">
+      <input ref={refCam} type="file" accept="image/*" capture="environment" onChange={elegirFoto} style={{display:"none"}}/>
+      <input ref={refFoto} type="file" accept="image/*" onChange={elegirFoto} style={{display:"none"}}/>
+      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+        {f.foto
+          ? <img src={f.foto} alt="" style={{width:76,height:76,objectFit:"cover",borderRadius:10,border:"1px solid "+BR}}/>
+          : <div style={{width:76,height:76,borderRadius:10,border:"1px dashed "+BR,display:"flex",
+               alignItems:"center",justifyContent:"center",color:GR,fontSize:22}}>📷</div>}
+        <div style={{display:"flex",gap:8,flex:1,minWidth:170,flexWrap:"wrap"}}>
+          <button onClick={()=>refCam.current?.click()} style={{...Btn("transparent",O,{flex:1,fontSize:12,padding:"9px 8px",borderColor:O})}}>📷 Sacar foto</button>
+          <button onClick={()=>refFoto.current?.click()} style={{...Btn("transparent",GR,{flex:1,fontSize:12,padding:"9px 8px"})}}>🖼️ Elegir</button>
+          {f.foto&&<button onClick={()=>s("foto","")} style={{...Btn("transparent",RE,{fontSize:12,padding:"9px 11px",borderColor:RE+"55"})}}>✕</button>}
+        </div>
+      </div>
+      {subiendo&&<div style={{color:subiendo.startsWith("Subiendo")?O:RE,fontSize:11,marginTop:8}}>{subiendo}</div>}
+    </Field>
+
     <div style={{borderTop:"1px solid "+BR,margin:"4px 0 14px",paddingTop:14}}>
       <div style={{color:O,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>CÓMO TERMINA EL PALET</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -868,13 +896,13 @@ function Productos({perfil}){
   };
   const nuevo=cliente=>setForm({cliente:cliente||"",ancho:"",largo:"",bolsasPorRollo:"",
     rollosPorBulto:"",micras:"",material:"PEBD",color:"NEGRO",pesoBolsa:"",
-    paqCama:"",camas:"",paqPalet:"",etiqueta:"",armado:"",notas:"",activo:true});
+    paqCama:"",camas:"",paqPalet:"",etiqueta:"",armado:"",foto:"",notas:"",activo:true});
   const editar=p=>setForm({id:p.id,cliente:p.cliente,ancho:p.ancho_cm??"",largo:p.largo_cm??"",
     bolsasPorRollo:p.bolsas_por_rollo??"",rollosPorBulto:p.rollos_por_bulto??"",
     micras:p.micras??"",material:p.material||"PEBD",color:p.color||"NEGRO",
     pesoBolsa:p.peso_bolsa_g??"",paqCama:p.paquetes_por_cama??"",camas:p.camas_por_palet??"",
     paqPalet:p.paquetes_por_palet??"",etiqueta:p.etiqueta||"",armado:p.armado||"",
-    notas:p.notas||"",activo:p.activo});
+    foto:p.foto||"",notas:p.notas||"",activo:p.activo});
 
   const filas=lista||[];
   const clientes=[...new Set(filas.map(p=>p.cliente))].sort();
@@ -909,7 +937,8 @@ function Productos({perfil}){
             ? " &nbsp;·&nbsp; "+p.paquetes_por_cama+" por cama × "+p.camas_por_palet+" camas":"")+
           (bxb&&p.paquetes_por_palet?" &nbsp;·&nbsp; "+millares(bxb*p.paquetes_por_palet)+" millares de bolsas por palet":"")
         : "<i>falta cargar cómo termina el palet</i>";
-      return "<div class=prod>"+
+      const foto=p.foto?"<img class=foto src='"+p.foto+"' alt=''>":"";
+      return "<div class='prod"+(p.foto?" confoto":"")+"'>"+foto+
         "<div class=cab><span class=med>"+p.medida+"</span>"+
           "<span class=col><i style='background:"+colorCss(p.color)+"'></i>"+(p.color||"sin color")+"</span></div>"+
         "<div class=datos>"+
@@ -944,7 +973,11 @@ function Productos({perfil}){
       "section h2{font-family:Orbitron,sans-serif;font-size:12.5pt;color:#b45309;letter-spacing:.5px;"+
         "display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #e5e7eb;padding-bottom:5px;margin-bottom:12px}"+
       "section h2 span{font-family:Montserrat,sans-serif;font-size:9pt;color:#9ca3af;font-weight:400}"+
-      ".prod{border:1px solid #e5e7eb;border-left:4px solid #f59e0b;border-radius:9px;padding:13px 15px;margin-bottom:11px;break-inside:avoid}"+
+      ".prod{border:1px solid #e5e7eb;border-left:4px solid #f59e0b;border-radius:9px;padding:13px 15px;margin-bottom:11px;break-inside:avoid;position:relative}"+
+      ".prod.confoto{padding-right:120px}"+
+      ".foto{position:absolute;right:13px;top:13px;width:96px;height:96px;object-fit:cover;"+
+        "border-radius:8px;border:1px solid #e5e7eb;print-color-adjust:exact;-webkit-print-color-adjust:exact}"+
+      "@media (max-width:640px){.prod.confoto{padding-right:15px}.foto{position:static;width:100%;height:150px;margin-bottom:10px}}"+
       ".cab{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}"+
       ".med{font-family:Orbitron,sans-serif;font-size:15pt;color:#111827}"+
       ".col{font-size:9pt;color:#4b5563;display:flex;align-items:center;gap:6px;text-transform:lowercase}"+
@@ -1010,7 +1043,7 @@ function Productos({perfil}){
             <button key={s.medida} onClick={()=>setForm({cliente:"",ancho:s.ancho,largo:s.largo,
                 bolsasPorRollo:s.bolsasPorRollo,rollosPorBulto:s.rollosPorBulto,micras:"",
                 material:"PEBD",color:"NEGRO",pesoBolsa:"",paqCama:"",camas:"",paqPalet:"",
-                etiqueta:"",armado:"",notas:"",activo:true})}
+                etiqueta:"",armado:"",foto:"",notas:"",activo:true})}
               style={{...Btn("transparent",W,{fontSize:11,padding:"6px 11px"})}}>
               + {s.medida} <span style={{color:GR}}>· {s.veces} {s.veces===1?"vez":"veces"}</span>
             </button>
@@ -1041,6 +1074,10 @@ function Productos({perfil}){
               {ps.map((p,i)=>(
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,fontSize:12,padding:"8px 0",
                      borderTop:i?"1px solid "+BR:"none",flexWrap:"wrap"}}>
+                  {p.foto
+                    ? <img src={p.foto} alt="" style={{width:34,height:34,objectFit:"cover",borderRadius:7,border:"1px solid "+BR,flexShrink:0}}/>
+                    : <span style={{width:34,height:34,borderRadius:7,border:"1px dashed "+BR,display:"inline-flex",
+                        alignItems:"center",justifyContent:"center",color:GR,fontSize:13,flexShrink:0}}>📷</span>}
                   <span style={{color:W,fontWeight:700,minWidth:110}}>
                     <span style={{display:"inline-block",width:10,height:10,borderRadius:10,
                       background:colorCss(p.color),border:"1px solid "+BR,marginRight:6}}/>

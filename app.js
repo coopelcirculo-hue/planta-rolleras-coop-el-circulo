@@ -526,6 +526,7 @@ const dbProductos = {
       camas_por_palet: Number(p.camas)||null,
       paquetes_por_palet: Number(p.paqPalet) || (Number(p.paqCama)*Number(p.camas)) || null,
       etiqueta: (p.etiqueta||"").trim(),
+      foto: p.foto||"",
       armado: (p.armado||"").trim(),
       peso_bolsa_g: p.pesoBolsa!=="" && p.pesoBolsa!=null ? Number(p.pesoBolsa)
                     : pesoTeoricoBolsa(p.ancho,p.largo,p.micras,p.material),
@@ -538,12 +539,28 @@ const dbProductos = {
       ? "Falta correr el SQL 22 (color de producto) en Supabase."
       : /paquetes|camas|etiqueta|armado/.test(error.message)
       ? "Falta correr el SQL 24 (armado de palet) en Supabase."
+      : /foto/.test(error.message)
+      ? "Falta correr el SQL 25 (foto de producto) en Supabase."
       : error.code==="23505"
       ? "Ese cliente ya tiene cargada esa misma medida en ese color."
       : /productos|42P01/.test(error.message+error.code) ? FALTA_SQL21 : error.message};
     if(!data || data.length===0) return {ok:false, detalle:SIN_PERMISO};
     return {ok:true};
   },
+  // La foto de la bolsa terminada. Se achica igual que la hoja de control
+  // (1200 px alcanza y sobra) y se guarda en el Storage; acá queda el link.
+  async subirFoto(archivo, cliente) {
+    if(!archivo || !archivo.size) return {ok:false, detalle:"La foto quedó vacía."};
+    const chica = await achicarFoto(archivo, 1200, 0.8);
+    const nombre = (String(cliente||"producto").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"")
+      .replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "producto") + "-" + Date.now() + ".jpg";
+    const {error} = await SB.storage.from("productos").upload(nombre, chica, {contentType:"image/jpeg"});
+    if(error) return {ok:false, detalle: /bucket|not found|404/i.test(error.message)
+      ? "Falta correr el SQL 25 (foto de producto) en Supabase." : error.message};
+    const {data} = SB.storage.from("productos").getPublicUrl(nombre);
+    return {ok:true, url:data.publicUrl};
+  },
+
   async borrar(id) {
     const {data,error} = await SB.from("productos").delete().eq("id",id).select();
     if(error) return {ok:false, detalle:error.message};
