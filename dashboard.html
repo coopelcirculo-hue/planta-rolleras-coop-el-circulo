@@ -531,7 +531,7 @@ function RollosTurno({maquinas,perfil}){
 
 // ── Catálogo de productos por cliente ───────────────────────────────────────
 // Cada producto se carga una vez (cliente, medida, bolsas por rollo, rollos por
-// bulto y micras) y después se elige de una lista en vez de escribirlo.
+// bulto y micrones) y después se elige de una lista en vez de escribirlo.
 function useProductos(){
   const [productos,setProductos]=useState([]);
   const [falta,setFalta]=useState(false);
@@ -551,7 +551,7 @@ function SelectorProducto({productos,valor,onElegir,vacio}){
     <option value="">{vacio||"Elegir producto..."}</option>
     {Object.entries(porCliente).sort().map(([c,ps])=>(
       <optgroup key={c} label={c}>
-        {ps.map(p=><option key={p.id} value={p.id}>{p.medida}{p.micras?" · "+p.micras+" µ":""}</option>)}
+        {ps.map(p=><option key={p.id} value={p.id}>{p.medida}{p.micras?" · "+p.micras+" micrones":""}</option>)}
       </optgroup>
     ))}
   </select>);
@@ -580,7 +580,7 @@ function ProductoForm({init,clientes,onSave,onClose}){
       <Field label="Rollos por bulto"><input type="number" style={inp} value={f.rollosPorBulto} onChange={e=>s("rollosPorBulto",e.target.value)} placeholder="24"/></Field>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-      <Field label="Micras (espesor)"><input type="number" step="0.5" style={inp} value={f.micras} onChange={e=>s("micras",e.target.value)} placeholder="25"/></Field>
+      <Field label="Micrones (espesor)"><input type="number" step="0.5" style={inp} value={f.micras} onChange={e=>s("micras",e.target.value)} placeholder="25"/></Field>
       <Field label="Material">
         <div style={{display:"flex",gap:6}}>
           {["PEBD","PEAD"].map(m=>(
@@ -590,7 +590,7 @@ function ProductoForm({init,clientes,onSave,onClose}){
     </div>
     <Field label="Peso por bolsa (gramos) — se calcula solo, se puede corregir">
       <input type="number" step="0.01" style={inp} value={f.pesoBolsa} onChange={e=>s("pesoBolsa",e.target.value)}
-        placeholder={teorico?String(teorico)+" (calculado)":"primero cargá medida y micras"}/>
+        placeholder={teorico?String(teorico)+" (calculado)":"primero cargá medida y micrones"}/>
     </Field>
     <Field label="Notas (opcional)"><input style={inp} value={f.notas} onChange={e=>s("notas",e.target.value)} placeholder="Ej: va a granel"/></Field>
 
@@ -598,7 +598,7 @@ function ProductoForm({init,clientes,onSave,onClose}){
       <div style={{color:GR}}>Queda guardado como <span style={{color:O,fontWeight:700}}>{medida||"—"}</span></div>
       {peso?<div style={{color:GR}}>Cada bolsa pesa <span style={{color:W,fontWeight:700}}>{peso} g</span> ·
         un millar de bolsas son <span style={{color:GN,fontWeight:700}}>{peso} kg</span> de material</div>
-        :<div style={{color:GR}}>Cargá micras para saber el peso de la bolsa.</div>}
+        :<div style={{color:GR}}>Cargá los micrones para saber el peso de la bolsa.</div>}
       {f.bolsasPorRollo&&f.rollosPorBulto?<div style={{color:GR}}>Un bulto son {fnum(Number(f.bolsasPorRollo)*Number(f.rollosPorBulto))} bolsas
         {peso?" · "+fkg(Number(f.bolsasPorRollo)*Number(f.rollosPorBulto)*peso/1000)+" kg":""}</div>:null}
     </div>
@@ -662,7 +662,7 @@ function Productos({perfil}){
     {error&&<div style={{color:O,fontSize:12,marginBottom:12,padding:10,background:O+"15",borderRadius:8}}>{error}</div>}
 
     {/* Las medidas que ya vienen en las hojas: un toque y queda el producto
-        armado, solo hay que ponerle el cliente y las micras. */}
+        armado, solo hay que ponerle el cliente y los micrones. */}
     {lista!==null&&lista!==undefined&&(()=>{
       const yaEstan=new Set(filas.map(p=>p.medida));
       const faltan=sugeridas.filter(s=>!yaEstan.has(s.medida)).slice(0,10);
@@ -670,7 +670,7 @@ function Productos({perfil}){
       return(<div style={{background:CA,border:"1px dashed "+BR,borderRadius:12,padding:14,marginBottom:12}}>
         <div style={{color:GR,fontSize:11,marginBottom:8,lineHeight:1.5}}>
           Medidas que ya se usaron en las hojas. Tocá una y se carga sola: solo ponele
-          el cliente y las micras.
+          el cliente y los micrones.
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {faltan.map(s=>(
@@ -690,7 +690,7 @@ function Productos({perfil}){
      filas.length===0?(
       <div style={{textAlign:"center",padding:30,color:GR,background:CA,border:"1px solid "+BR,borderRadius:12,fontSize:12,lineHeight:1.6}}>
         Todavía no hay productos. Agregá el primero: cliente, medida de la bolsa,
-        bolsas por rollo, rollos por bulto y micras.
+        bolsas por rollo, rollos por bulto y micrones (espesor).
       </div>
      ):(
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -707,7 +707,7 @@ function Productos({perfil}){
                   <span style={{color:W,fontWeight:700,minWidth:110}}>{p.medida}</span>
                   <span style={{color:GR,flex:1,minWidth:150}}>
                     {p.bolsas_por_rollo||"?"} bolsas × rollo · {p.rollos_por_bulto||"?"} rollos × bulto
-                    {p.micras?" · "+p.micras+" µ "+(p.material||""):""}
+                    {p.micras?" · "+p.micras+" micrones "+(p.material||""):""}
                   </span>
                   {p.peso_bolsa_g?<span style={{color:GN,fontWeight:700,whiteSpace:"nowrap"}}>{p.peso_bolsa_g} g c/u · {p.peso_bolsa_g} kg/millar</span>:null}
                   <button onClick={()=>editar(p)} style={{...Btn("transparent",GR,{fontSize:11,padding:"4px 9px"})}}>✏️</button>
@@ -1657,7 +1657,7 @@ function Reportes({perfil}){
 
   // ── Kilos por millar de bolsas y control de calibre ──
   // Cuánto material lleva cada mil bolsas. Se compara con el peso teórico del
-  // producto (ancho x largo x 2 caras x micras): si da más, o se está yendo de
+  // producto (ancho x largo x 2 caras x micrones): si da más, o se está yendo de
   // espesor o se tiró más material del que figura como scrap.
   const claveMedida=m=>{ const n=numerosMedida(m); return n.length>=4?n.slice(0,4).join("x"):null; };
   const porMillar=()=>{

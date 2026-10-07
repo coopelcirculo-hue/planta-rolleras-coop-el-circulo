@@ -480,7 +480,7 @@ const FALTA_SQL21 = "Falta correr el SQL 21 (catálogo de productos) en Supabase
 const DENSIDAD = {PEBD:0.92, PEAD:0.95};
 
 // Peso teórico de una bolsa, en gramos: dos caras de film del ancho y largo de
-// la bolsa, con el espesor en micras. Sirve para comparar contra lo que pesa de
+// la bolsa, con el espesor en micrones. Sirve para comparar contra lo que pesa de
 // verdad y darse cuenta si se está yendo de calibre.
 const pesoTeoricoBolsa = (ancho, largo, micras, material) => {
   const a=Number(ancho)||0, l=Number(largo)||0, m=Number(micras)||0;
