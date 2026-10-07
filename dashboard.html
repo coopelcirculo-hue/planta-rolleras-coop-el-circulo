@@ -209,12 +209,42 @@ function duracion(desde,hasta){
   return d+" d"+(h%24?" "+(h%24)+"h":"");
 }
 
+// Al cambiar de medida es donde se escapan los problemas de calidad: la
+// máquina queda regulada para otra bolsa. Esto se pregunta solo cuando la
+// medida cambia, y lo que quede sin marcar queda anotado en el historial.
+const CHECK_MEDIDA=[
+  ["maquina","Chequeo general: cuchillas, sellado y etiquetador"],
+  ["bobina","Bobina centrada y fotocélula regulada"],
+  ["primer","Control de calidad del primer rollo: medida, peso y que no venga fallado"],
+  ["hoja","Medida nueva anotada en la hoja del turno"],
+];
+
 function CambiarEstadoForm({init,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const {productos}=useProductos();
   const [guardando,setGuardando]=useState(false);
+  const [chk,setChk]=useState({});
   const valido = f.estado==="produciendo" ? f.medida.trim() : true;
-  const guardar=async()=>{ setGuardando(true); await onSave(f); setGuardando(false); };
+  // Hay cambio de medida si se pone a producir algo distinto de lo que estaba.
+  const cambioMedida = f.estado==="produciendo" && (f.medida||"").trim() &&
+    (f.medida||"").trim().toUpperCase() !== (init.medida||"").trim().toUpperCase();
+  const faltan = cambioMedida ? CHECK_MEDIDA.filter(([k])=>!chk[k]) : [];
+  const guardar=async()=>{
+    if(cambioMedida && faltan.length &&
+       !confirm("Todavía falta marcar:\n\n· "+faltan.map(x=>x[1]).join("\n· ")+
+                "\n\n¿Guardar igual? Queda anotado qué quedó sin hacer."))
+      return;
+    setGuardando(true);
+    // En "produciendo" el campo motivo no se usa para otra cosa, así que ahí
+    // queda la constancia del chequeo.
+    const nota = cambioMedida
+      ? "Cambio de medida · " + (faltan.length
+          ? "FALTÓ: " + faltan.map(x=>x[1]).join("; ")
+          : "chequeo general y control de calidad hechos")
+      : f.motivo;
+    await onSave({...f, motivo:nota});
+    setGuardando(false);
+  };
   return(<>
     <Field label="Estado">
       <div style={{display:"flex",gap:8}}>
@@ -234,6 +264,27 @@ function CambiarEstadoForm({init,onSave,onClose}){
         <input style={inp} value={f.presentacion} onChange={e=>s("presentacion",e.target.value)} placeholder="Ej: a granel  /  x24 Dottiplast"/>
       </Field>
     </>}
+
+    {cambioMedida&&<div style={{border:"1px solid "+O,background:O+"12",borderRadius:10,padding:"12px 14px",marginBottom:14}}>
+      <div style={{color:O,fontWeight:700,fontSize:12,marginBottom:4}}>
+        ⚠️ Cambio de medida{init.medida?": "+init.medida+" → "+f.medida:""}
+      </div>
+      <div style={{color:GR,fontSize:11,marginBottom:8,lineHeight:1.5}}>
+        Antes de arrancar, marcá lo que ya hiciste. Lo que quede sin marcar queda
+        anotado en el historial de la máquina.
+      </div>
+      {CHECK_MEDIDA.map(([k,l])=>(
+        <label key={k} style={{display:"flex",gap:9,alignItems:"flex-start",fontSize:12,
+             color:chk[k]?GN:W,padding:"6px 0",cursor:"pointer",lineHeight:1.4}}>
+          <input type="checkbox" checked={!!chk[k]} onChange={e=>setChk(x=>({...x,[k]:e.target.checked}))}
+            style={{marginTop:2,width:17,height:17,flexShrink:0,accentColor:"#22c55e"}}/>
+          <span>{l}</span>
+        </label>
+      ))}
+      <div style={{color:faltan.length?O:GN,fontSize:11,marginTop:6,fontWeight:700}}>
+        {faltan.length?"Faltan "+faltan.length+" de "+CHECK_MEDIDA.length:"✓ Todo listo para arrancar"}
+      </div>
+    </div>}
 
     {f.estado==="parada"&&<Field label="Motivo de la parada">
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
@@ -781,6 +832,8 @@ function Monitoreo({perfil}){
             <div style={{color:GR,fontSize:10,marginTop:2}}>
               {fhora(h.inicio)} → {h.fin?fhora(h.fin):"ahora"}{h.creadoPor?" · "+h.creadoPor:""}
             </div>
+            {h.estado==="produciendo"&&h.motivo&&
+              <div style={{color:h.motivo.includes("FALTÓ")?O:GN,fontSize:10,marginTop:2,lineHeight:1.4}}>{h.motivo}</div>}
           </div>);
         })}
        </div>}
