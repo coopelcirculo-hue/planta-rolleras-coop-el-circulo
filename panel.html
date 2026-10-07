@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="theme-color" content="#111827"/>
+  <title>Panel de planta — Coop El Círculo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+  <style>
+    /* Pensado para una pantalla colgada en la planta: se lee de lejos y no se
+       toca. Los tamaños van en vw para que se agrande con la pantalla. */
+    body{overflow:hidden;}
+    #root{height:100vh;display:flex;flex-direction:column;}
+    .panel-tope{display:flex;justify-content:space-between;align-items:center;
+      padding:1.2vw 2vw;border-bottom:1px solid #2d3748;flex-shrink:0;}
+    .panel-logo{font-family:'Orbitron',sans-serif;font-size:1.9vw;color:#f59e0b;letter-spacing:.15vw;}
+    .panel-reloj{font-family:'Orbitron',sans-serif;font-size:2.6vw;color:#F8FAFC;}
+    .panel-fecha{font-size:1vw;color:#9CA3AF;text-align:right;text-transform:capitalize;}
+    .panel-maquinas{flex:1;display:grid;gap:1.5vw;padding:1.5vw 2vw;min-height:0;}
+    .maq{border-radius:1vw;border:.25vw solid;padding:1.5vw;display:flex;flex-direction:column;
+      justify-content:space-between;min-height:0;}
+    .maq-nombre{font-family:'Orbitron',sans-serif;font-size:2.2vw;color:#F8FAFC;}
+    .maq-chapa{font-size:1.1vw;font-weight:700;padding:.4vw 1.2vw;border-radius:3vw;letter-spacing:.1vw;}
+    .maq-dato{font-family:'Orbitron',sans-serif;font-size:3.6vw;line-height:1.1;word-break:break-word;}
+    .maq-sub{font-size:1.5vw;color:#F8FAFC;margin-top:.4vw;}
+    .maq-pie{font-size:1.2vw;color:#9CA3AF;margin-top:.8vw;}
+    .panel-abajo{display:flex;gap:2vw;padding:1.2vw 2vw;border-top:1px solid #2d3748;
+      flex-shrink:0;flex-wrap:wrap;align-items:flex-end;}
+    .kpi-tit{font-size:.95vw;color:#9CA3AF;letter-spacing:.12vw;}
+    .kpi-num{font-family:'Orbitron',sans-serif;font-size:2.2vw;font-weight:700;}
+    .kpi-sub{font-size:.95vw;color:#9CA3AF;}
+    .alerta{background:#ef4444;color:#fff;padding:1vw 2vw;font-size:1.6vw;font-weight:700;
+      text-align:center;animation:late 2s ease-in-out infinite;flex-shrink:0;}
+    @keyframes late{0%,100%{opacity:1}50%{opacity:.55}}
+    @media (max-width:900px){
+      .panel-logo{font-size:4vw}.panel-reloj{font-size:6vw}.panel-fecha{font-size:2.4vw}
+      .maq-nombre{font-size:5vw}.maq-dato{font-size:7vw}.maq-sub{font-size:3.4vw}
+      .maq-pie{font-size:2.8vw}.maq-chapa{font-size:2.6vw}
+      .kpi-tit{font-size:2.2vw}.kpi-num{font-size:5vw}.kpi-sub{font-size:2.2vw}
+      .alerta{font-size:3.4vw}
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="app.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+const {useState,useEffect} = React;
+
+// Turno en curso: el día arranca a las 6 y la noche a las 18.
+const turnoAhora = () => { const h=new Date().getHours(); return h>=6&&h<18?"dia":"noche"; };
+
+// Hace cuánto que está así, en grande ("3 h 20" / "45 min")
+const desdeCorto = iso => {
+  if(!iso) return "";
+  const min = Math.max(0, Math.floor((Date.now()-new Date(iso).getTime())/60000));
+  if(min<60) return min+" min";
+  return Math.floor(min/60)+" h "+String(min%60).padStart(2,"0");
+};
+const minutosDesde = iso => iso ? Math.floor((Date.now()-new Date(iso).getTime())/60000) : 0;
+
+// Una parada de más de media hora sale en rojo arriba de todo.
+const AVISO_PARADA = 30;
+
+function Maquina({f}){
+  const info = ESTADOS.find(e=>e.id===f.estado);
+  const color = f.estado==="produciendo" ? GN : f.estado==="parada" ? O : GR;
+  const mins = minutosDesde(f.inicio);
+  const alerta = f.estado==="parada" && mins>=AVISO_PARADA;
+  return(<div className="maq" style={{borderColor:(f.estado?color:BR)+(alerta?"":"88"),
+       background:alerta?RE+"18":CA}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"1vw"}}>
+      <span className="maq-nombre">{tituloMaquina(f.maquina)}</span>
+      <span className="maq-chapa" style={{background:(f.estado?color:GR)+"26",color:f.estado?color:GR}}>
+        {f.estado?info.icon+" "+info.label.toUpperCase():"SIN REGISTRO"}
+      </span>
+    </div>
+
+    <div>
+      {f.estado==="produciendo"?(<>
+        <div className="maq-dato" style={{color:GN}}>{f.medida||"—"}</div>
+        {f.presentacion&&<div className="maq-sub">{f.presentacion}</div>}
+      </>):f.estado==="parada"?(<>
+        <div className="maq-dato" style={{color:alerta?RE:O,fontSize:"2.6vw"}}>{f.motivo||"Parada"}</div>
+        <div className="maq-sub" style={{color:alerta?RE:O}}>hace {desdeCorto(f.inicio)}</div>
+      </>):(
+        <div className="maq-dato" style={{color:GR,fontSize:"2.6vw"}}>
+          {f.estado==="apagada"?"Apagada":"Todavía sin registrar"}
+        </div>
+      )}
+    </div>
+
+    <div className="maq-pie">
+      {f.estado==="produciendo"
+        ? "en marcha hace "+desdeCorto(f.inicio)
+        : f.estado ? "desde "+fhora(f.inicio) : "nadie cargó el estado"}
+      {f.creadoPor?" · "+f.creadoPor:""}
+    </div>
+  </div>);
+}
+
+function Panel(){
+  const [filas,setFilas]=useState([]);
+  const [hoja,setHoja]=useState({kilos:0,scrap:0,turnos:0});
+  const [bolsas,setBolsas]=useState(0);
+  const [ahora,setAhora]=useState(new Date());
+  const [listo,setListo]=useState(false);
+
+  const cargar=async()=>{
+    const hoy=hoyIso();
+    const [est,prod,rollos]=await Promise.all([
+      db.loadEstadoActual(),
+      db.loadProduccion(hoy,hoy),
+      dbRollos.listar(hoy,hoy),
+    ]);
+    setFilas(est);
+    const ps=prod.producciones||[];
+    setHoja({
+      kilos: ps.reduce((a,p)=>a+(+p.kilos||0),0),
+      scrap: ps.reduce((a,p)=>a+(+p.scrap_empalme||0)+(+p.scrap_rollo||0),0),
+      turnos: ps.length,
+    });
+    setBolsas((rollos||[]).reduce((a,r)=>a+bolsasDe(r),0));
+    setListo(true);
+  };
+
+  useEffect(()=>{
+    (async()=>{
+      const p=await initAuth();
+      if(!p){ window.location.href="index.html"; return; }
+      await cargar();
+    })();
+    const datos=setInterval(cargar,60000);        // datos: cada minuto
+    const reloj=setInterval(()=>setAhora(new Date()),20000);  // reloj y "hace X": cada 20 s
+    return ()=>{ clearInterval(datos); clearInterval(reloj); };
+  },[]);
+
+  const paradasLargas = filas.filter(f=>f.estado==="parada" && minutosDesde(f.inicio)>=AVISO_PARADA);
+  const produciendo = filas.filter(f=>f.estado==="produciendo").length;
+  const pctScrap = hoja.kilos ? 100*hoja.scrap/hoja.kilos : 0;
+  const dia = ahora.toLocaleDateString("es-AR",{weekday:"long",day:"numeric",month:"long"});
+  const hora = String(ahora.getHours()).padStart(2,"0")+":"+String(ahora.getMinutes()).padStart(2,"0");
+  const cols = Math.min(filas.length||1, 3);
+
+  if(!listo) return <div style={{color:GR,padding:"3vw",fontSize:"2vw"}}>Cargando el panel...</div>;
+
+  return(<>
+    <div className="panel-tope">
+      <div>
+        <div className="panel-logo">🏭 PLANTA ROLLERAS</div>
+        <div style={{color:GR,fontSize:"1vw",marginTop:".3vw"}}>
+          Coop El Círculo · turno {turnoAhora()==="dia"?"día ☀️":"noche 🌙"} · {produciendo} de {filas.length} en marcha
+        </div>
+      </div>
+      <div>
+        <div className="panel-reloj">{hora}</div>
+        <div className="panel-fecha">{dia}</div>
+      </div>
+    </div>
+
+    {paradasLargas.length>0&&
+      <div className="alerta">
+        ⚠️ {paradasLargas.map(f=>tituloMaquina(f.maquina)+" parada hace "+desdeCorto(f.inicio)+(f.motivo?" ("+f.motivo+")":"")).join("   ·   ")}
+      </div>}
+
+    <div className="panel-maquinas" style={{gridTemplateColumns:"repeat("+cols+",1fr)"}}>
+      {filas.length===0
+        ? <div style={{color:GR,fontSize:"1.6vw"}}>No hay máquinas cargadas todavía.</div>
+        : filas.map(f=><Maquina key={f.maquina_id} f={f}/>)}
+    </div>
+
+    <div className="panel-abajo">
+      <div>
+        <div className="kpi-tit">HOY · MILLARES DE BOLSAS</div>
+        <div className="kpi-num" style={{color:GN}}>{millares(bolsas)}</div>
+        <div className="kpi-sub">cargados en los turnos de hoy</div>
+      </div>
+      <div>
+        <div className="kpi-tit">HOY · KILOS DE HOJA</div>
+        <div className="kpi-num" style={{color:O}}>{fkg(hoja.kilos)}</div>
+        <div className="kpi-sub">{hoja.turnos} hoja{hoja.turnos!==1?"s":""} cargada{hoja.turnos!==1?"s":""}</div>
+      </div>
+      <div>
+        <div className="kpi-tit">HOY · SCRAP</div>
+        <div className="kpi-num" style={{color:pctScrap>3?RE:GN}}>{hoja.kilos?pctScrap.toFixed(1)+"%":"—"}</div>
+        <div className="kpi-sub">{fkg(hoja.scrap)} kg tirados</div>
+      </div>
+      <div style={{marginLeft:"auto",textAlign:"right"}}>
+        <div className="kpi-sub">se actualiza solo cada minuto</div>
+        <div className="kpi-sub" style={{color:GR}}>última lectura {hora}</div>
+      </div>
+    </div>
+  </>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Panel/>);
+  </script>
+</body>
+</html>

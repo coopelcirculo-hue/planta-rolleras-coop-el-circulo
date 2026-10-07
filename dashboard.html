@@ -45,7 +45,10 @@ function Header({nombre,tab,setTab,isMobile}){
         <div style={{fontFamily:"Orbitron,sans-serif",fontSize:isMobile?11:13,color:O,letterSpacing:1,whiteSpace:"nowrap"}}>🏭 PLANTA ROLLERAS</div>
         <div style={{fontSize:10,color:GR,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Coop El Círculo{nombre?" · "+nombre:""}</div>
       </div>
-      <button onClick={logout} style={{...Btn("transparent",RE,{padding:"7px 12px",fontSize:12,flexShrink:0})}}>🚪{isMobile?"":" Salir"}</button>
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <a href="panel.html" target="_blank" title="Pantalla para colgar en la planta" style={{...Btn("transparent",GR,{padding:"7px 12px",fontSize:12,textDecoration:"none",display:"inline-block"})}}>📺{isMobile?"":" Pantalla"}</a>
+        <button onClick={logout} style={{...Btn("transparent",RE,{padding:"7px 12px",fontSize:12})}}>🚪{isMobile?"":" Salir"}</button>
+      </div>
     </div>
     <div className="barra-tabs" style={{display:"flex",gap:2,padding:"0 10px",overflowX:"auto"}}>
       {TABS.map(([id,ic,largo,corto])=>(
