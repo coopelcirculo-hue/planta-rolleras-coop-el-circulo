@@ -522,6 +522,11 @@ const dbProductos = {
       micras: Number(p.micras)||null,
       material: p.material||"PEBD",
       color: (p.color||"").trim().toUpperCase(),
+      paquetes_por_cama: Number(p.paqCama)||null,
+      camas_por_palet: Number(p.camas)||null,
+      paquetes_por_palet: Number(p.paqPalet) || (Number(p.paqCama)*Number(p.camas)) || null,
+      etiqueta: (p.etiqueta||"").trim(),
+      armado: (p.armado||"").trim(),
       peso_bolsa_g: p.pesoBolsa!=="" && p.pesoBolsa!=null ? Number(p.pesoBolsa)
                     : pesoTeoricoBolsa(p.ancho,p.largo,p.micras,p.material),
       notas: p.notas||"", activo: p.activo!==false, creado_por: p.creadoPor||""
@@ -531,6 +536,8 @@ const dbProductos = {
       : await SB.from("productos").insert(fila).select();
     if(error) return {ok:false, detalle: /color/.test(error.message)
       ? "Falta correr el SQL 22 (color de producto) en Supabase."
+      : /paquetes|camas|etiqueta|armado/.test(error.message)
+      ? "Falta correr el SQL 24 (armado de palet) en Supabase."
       : error.code==="23505"
       ? "Ese cliente ya tiene cargada esa misma medida en ese color."
       : /productos|42P01/.test(error.message+error.code) ? FALTA_SQL21 : error.message};
@@ -565,6 +572,29 @@ const dbProductos = {
       return {medida, veces, ancho:n[0], largo:n[1], bolsasPorRollo:n[2], rollosPorBulto:n[3]};
     }).sort((a,b)=>b.veces-a.veces);
   },
+};
+
+// ── Bajar una tabla a Excel ─────────────────────────────────────────────────
+// Se arma un CSV con punto y coma y coma decimal, que es como lo abre Excel en
+// Argentina: se hace doble clic y ya queda en columnas, sin importar nada.
+const descargarCSV = (nombre, filas) => {
+  if(!filas || !filas.length) return false;
+  const cols = Object.keys(filas[0]);
+  const val = v => {
+    if(v == null) return "";
+    if(typeof v === "number") return String(v).replace(".", ",");   // coma decimal
+    const s = String(v).replace(/"/g, '""');
+    return /[";\n]/.test(s) ? '"' + s + '"' : s;
+  };
+  const lineas = [cols.join(";")].concat(filas.map(f => cols.map(c => val(f[c])).join(";")));
+  const texto = "﻿" + lineas.join("\r\n");
+  const archivo = (nombre + " " + fdate(hoyIso()).replace(/\//g, "-")).replace(/[\\/:*?"<>|]/g, "-") + ".csv";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([texto], {type:"text/csv;charset=utf-8;"}));
+  a.download = archivo;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+  return true;
 };
 
 // ── Stock de insumos (SQL 23) ───────────────────────────────────────────────

@@ -759,6 +759,7 @@ function ProductoForm({init,clientes,onSave,onClose}){
   const [f,setF]=useState(init);const s=(k,v)=>setF(x=>({...x,[k]:v}));
   const [guardando,setGuardando]=useState(false);
   const esNegro=(f.color||"").trim().toUpperCase()==="NEGRO";
+  const paqCalc=(Number(f.paqCama)||0)*(Number(f.camas)||0)||null;
   const teorico=pesoTeoricoBolsa(f.ancho,f.largo,f.micras,f.material);
   const peso=f.pesoBolsa!==""&&f.pesoBolsa!=null?Number(f.pesoBolsa):teorico;
   const medida=textoMedida(f);
@@ -805,6 +806,20 @@ function ProductoForm({init,clientes,onSave,onClose}){
       <input type="number" step="0.01" style={inp} value={f.pesoBolsa} onChange={e=>s("pesoBolsa",e.target.value)}
         placeholder={teorico?String(teorico)+" (calculado)":"primero cargá medida y micrones"}/>
     </Field>
+    <div style={{borderTop:"1px solid "+BR,margin:"4px 0 14px",paddingTop:14}}>
+      <div style={{color:O,fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10}}>CÓMO TERMINA EL PALET</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <Field label="Paquetes por cama"><input type="number" style={inp} value={f.paqCama} onChange={e=>s("paqCama",e.target.value)} placeholder="Ej: 8"/></Field>
+        <Field label="Camas por palet"><input type="number" style={inp} value={f.camas} onChange={e=>s("camas",e.target.value)} placeholder="Ej: 6"/></Field>
+      </div>
+      <Field label="Paquetes por palet (se calcula solo, se puede corregir)">
+        <input type="number" style={inp} value={f.paqPalet} onChange={e=>s("paqPalet",e.target.value)}
+          placeholder={paqCalc?String(paqCalc)+" (calculado)":"Ej: 48"}/>
+      </Field>
+      <Field label="Etiqueta / rótulo"><input style={inp} value={f.etiqueta} onChange={e=>s("etiqueta",e.target.value)} placeholder="Ej: etiqueta Dottiplast en cada paquete"/></Field>
+      <Field label="Cómo se arma"><textarea style={{...inp,minHeight:60,resize:"vertical"}} value={f.armado} onChange={e=>s("armado",e.target.value)} placeholder="Ej: cruzado, film hasta la base, 2 zunchos"/></Field>
+    </div>
+
     <Field label="Notas (opcional)"><input style={inp} value={f.notas} onChange={e=>s("notas",e.target.value)} placeholder="Ej: va a granel"/></Field>
 
     <div style={{background:D,borderRadius:10,padding:"12px 14px",marginBottom:14,fontSize:12,lineHeight:1.7}}>
@@ -852,14 +867,110 @@ function Productos({perfil}){
     await cargar();
   };
   const nuevo=cliente=>setForm({cliente:cliente||"",ancho:"",largo:"",bolsasPorRollo:"",
-    rollosPorBulto:"",micras:"",material:"PEBD",color:"NEGRO",pesoBolsa:"",notas:"",activo:true});
+    rollosPorBulto:"",micras:"",material:"PEBD",color:"NEGRO",pesoBolsa:"",
+    paqCama:"",camas:"",paqPalet:"",etiqueta:"",armado:"",notas:"",activo:true});
   const editar=p=>setForm({id:p.id,cliente:p.cliente,ancho:p.ancho_cm??"",largo:p.largo_cm??"",
     bolsasPorRollo:p.bolsas_por_rollo??"",rollosPorBulto:p.rollos_por_bulto??"",
     micras:p.micras??"",material:p.material||"PEBD",color:p.color||"NEGRO",
-    pesoBolsa:p.peso_bolsa_g??"",notas:p.notas||"",activo:p.activo});
+    pesoBolsa:p.peso_bolsa_g??"",paqCama:p.paquetes_por_cama??"",camas:p.camas_por_palet??"",
+    paqPalet:p.paquetes_por_palet??"",etiqueta:p.etiqueta||"",armado:p.armado||"",
+    notas:p.notas||"",activo:p.activo});
 
   const filas=lista||[];
   const clientes=[...new Set(filas.map(p=>p.cliente))].sort();
+
+  // Excel: la tabla completa, para el que quiera hacer cuentas aparte.
+  const exportar=()=>descargarCSV("Productos Coop El Circulo", filas.map(p=>({
+    Cliente:p.cliente, Medida:p.medida, Color:p.color||"",
+    "Ancho (cm)":p.ancho_cm, "Largo (cm)":p.largo_cm,
+    "Bolsas por rollo":p.bolsas_por_rollo, "Rollos por bulto":p.rollos_por_bulto,
+    "Bolsas por bulto":(Number(p.bolsas_por_rollo)||0)*(Number(p.rollos_por_bulto)||0)||"",
+    Micrones:p.micras, "Peso bolsa (g)":p.peso_bolsa_g, "Kg por millar":p.peso_bolsa_g,
+    "Paquetes por cama":p.paquetes_por_cama, "Camas por palet":p.camas_por_palet,
+    "Paquetes por palet":p.paquetes_por_palet, Etiqueta:p.etiqueta||"",
+    "Cómo se arma":p.armado||"", Notas:p.notas||""
+  })));
+
+  // Ficha: una hoja por cliente, pensada para imprimir, mandar o colgar al lado
+  // de la máquina. Sale igual que los reportes: se guarda como PDF con la fecha.
+  const ficha=cliente=>{
+    const items=(cliente?filas.filter(p=>p.cliente===cliente):filas);
+    if(!items.length) return;
+    const w=window.open("","_blank");
+    if(!w){ alert("El navegador bloqueó la pestaña nueva: permití las ventanas emergentes para esta página."); return; }
+    const porC={}; items.forEach(p=>(porC[p.cliente]=porC[p.cliente]||[]).push(p));
+    const dato=(t,v,extra)=>"<div class=dato><span class=t>"+t+"</span><span class=v>"+
+      (v==null||v===""?"<i>falta</i>":v)+"</span>"+(extra?"<span class=e>"+extra+"</span>":"")+"</div>";
+    const tarjeta=p=>{
+      const bxb=(Number(p.bolsas_por_rollo)||0)*(Number(p.rollos_por_bulto)||0);
+      const palet=p.paquetes_por_palet
+        ? "<b>"+p.paquetes_por_palet+" paquetes por palet</b>"+
+          (p.paquetes_por_cama&&p.camas_por_palet
+            ? " &nbsp;·&nbsp; "+p.paquetes_por_cama+" por cama × "+p.camas_por_palet+" camas":"")+
+          (bxb&&p.paquetes_por_palet?" &nbsp;·&nbsp; "+millares(bxb*p.paquetes_por_palet)+" millares de bolsas por palet":"")
+        : "<i>falta cargar cómo termina el palet</i>";
+      return "<div class=prod>"+
+        "<div class=cab><span class=med>"+p.medida+"</span>"+
+          "<span class=col><i style='background:"+colorCss(p.color)+"'></i>"+(p.color||"sin color")+"</span></div>"+
+        "<div class=datos>"+
+          dato("Bolsa", (p.ancho_cm&&p.largo_cm)?p.ancho_cm+" × "+p.largo_cm+" cm":null, p.micras?p.micras+" micrones":"") +
+          dato("Bolsas por rollo", p.bolsas_por_rollo) +
+          dato("Rollos por bulto", p.rollos_por_bulto, bxb?bxb+" bolsas por bulto":"") +
+          dato("Peso de la bolsa", p.peso_bolsa_g?p.peso_bolsa_g+" g":null, p.peso_bolsa_g?p.peso_bolsa_g+" kg el millar":"") +
+        "</div>"+
+        "<div class=palet><span class=t>ARMADO DEL PALET</span><div>"+palet+"</div>"+
+          (p.etiqueta?"<div class=extra><b>Etiqueta:</b> "+p.etiqueta+"</div>":"")+
+          (p.armado?"<div class=extra>"+p.armado+"</div>":"")+
+          (p.notas?"<div class=extra>"+p.notas+"</div>":"")+
+        "</div></div>";
+    };
+    const bloques=Object.entries(porC).sort().map(([c,ps])=>
+      "<section><h2>"+c+"<span>"+ps.length+" producto"+(ps.length!==1?"s":"")+"</span></h2>"+
+      ps.map(tarjeta).join("")+"</section>").join("");
+    const titulo="Productos "+(cliente||"todos los clientes")+" "+fdate(hoyIso()).replace(/\//g,"-");
+    w.document.write("<!doctype html><html lang=es><head><meta charset=utf-8><title>"+titulo+"</title>"+
+      "<link href='https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Montserrat:wght@400;600;700&display=swap' rel=stylesheet>"+
+      "<style>"+
+      "@page{size:A4 portrait;margin:14mm;}"+
+      "*{box-sizing:border-box;margin:0;padding:0}"+
+      "body{font-family:Montserrat,sans-serif;background:#f3f4f6;color:#1f2937;padding:24px}"+
+      ".hoja{max-width:800px;margin:0 auto;background:#fff;padding:28px;border-radius:14px;box-shadow:0 1px 12px #0001}"+
+      "header{display:flex;align-items:center;gap:14px;border-bottom:3px solid #f59e0b;padding-bottom:12px;margin-bottom:18px}"+
+      "header img{width:44px;height:44px;border-radius:9px}"+
+      "header h1{font-size:17pt;line-height:1.2}"+
+      "header p{font-size:9.5pt;color:#6b7280;margin-top:2px}"+
+      ".imprimir{position:fixed;right:20px;top:20px;background:#f59e0b;border:0;border-radius:9px;padding:11px 18px;font-weight:700;font-family:inherit;cursor:pointer}"+
+      "section{margin-bottom:22px;break-inside:auto}"+
+      "section h2{font-family:Orbitron,sans-serif;font-size:12.5pt;color:#b45309;letter-spacing:.5px;"+
+        "display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #e5e7eb;padding-bottom:5px;margin-bottom:12px}"+
+      "section h2 span{font-family:Montserrat,sans-serif;font-size:9pt;color:#9ca3af;font-weight:400}"+
+      ".prod{border:1px solid #e5e7eb;border-left:4px solid #f59e0b;border-radius:9px;padding:13px 15px;margin-bottom:11px;break-inside:avoid}"+
+      ".cab{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:9px}"+
+      ".med{font-family:Orbitron,sans-serif;font-size:15pt;color:#111827}"+
+      ".col{font-size:9pt;color:#4b5563;display:flex;align-items:center;gap:6px;text-transform:lowercase}"+
+      ".col i{width:12px;height:12px;border-radius:12px;border:1px solid #d1d5db;display:inline-block}"+
+      ".datos{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:10px}"+
+      ".dato{border-left:2px solid #f3f4f6;padding-left:8px}"+
+      ".dato .t{display:block;font-size:7.5pt;color:#9ca3af;letter-spacing:.5px;text-transform:uppercase}"+
+      ".dato .v{display:block;font-size:11.5pt;font-weight:700;color:#1f2937}"+
+      ".dato .e{display:block;font-size:8pt;color:#6b7280}"+
+      ".dato i{color:#b45309;font-style:italic;font-size:9pt;font-weight:400}"+
+      ".palet{background:#fff7ed;border:1px solid #fed7aa;border-radius:7px;padding:9px 11px;font-size:9.5pt}"+
+      ".palet .t{display:block;font-size:7.5pt;color:#b45309;letter-spacing:.7px;font-weight:700;margin-bottom:3px}"+
+      ".palet .extra{font-size:9pt;color:#4b5563;margin-top:3px}"+
+      ".palet i{color:#b45309}"+
+      "footer{margin-top:18px;border-top:1px solid #e5e7eb;padding-top:8px;font-size:8.5pt;color:#9ca3af;display:flex;justify-content:space-between}"+
+      "@media print{body{background:#fff;padding:0}.hoja{box-shadow:none;padding:0;max-width:none;border-radius:0}.imprimir{display:none}}"+
+      "</style></head><body>"+
+      "<button class=imprimir onclick='window.print()'>🖨️ Imprimir o guardar PDF</button>"+
+      "<div class=hoja><header><img src='"+location.href.replace(/[^/]*$/,"")+"icon-192.png' alt=''>"+
+      "<div><h1>Productos y armado de palet</h1>"+
+      "<p>Planta Rolleras · Coop El Círculo · "+(cliente?"Cliente: "+cliente+" · ":"")+"al "+fdate(hoyIso())+"</p></div></header>"+
+      bloques+
+      "<footer><span>Planta Rolleras · Coop El Círculo</span><span>"+items.length+" producto"+(items.length!==1?"s":"")+"</span></footer>"+
+      "</div></body></html>");
+    w.document.close();
+  };
   const porCliente={};
   filas.forEach(p=>(porCliente[p.cliente]=porCliente[p.cliente]||[]).push(p));
 
@@ -872,7 +983,13 @@ function Productos({perfil}){
           escribir la medida en ningún lado.
         </p>
       </div>
-      <button onClick={()=>nuevo("")} disabled={lista===null} style={{...Btn(O,D,{fontSize:12,padding:"7px 14px",opacity:lista===null?0.5:1})}}>+ Agregar producto</button>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <button onClick={()=>ficha(null)} disabled={!filas.length} title="Una hoja por cliente, para imprimir o guardar en PDF"
+          style={{...Btn("transparent",W,{fontSize:12,padding:"7px 14px",opacity:filas.length?1:0.5})}}>🖨️ Fichas</button>
+        <button onClick={exportar} disabled={!filas.length} title="Para abrir en Excel"
+          style={{...Btn("transparent",GR,{fontSize:12,padding:"7px 14px",opacity:filas.length?1:0.5})}}>⬇️ Excel</button>
+        <button onClick={()=>nuevo("")} disabled={lista===null} style={{...Btn(O,D,{fontSize:12,padding:"7px 14px",opacity:lista===null?0.5:1})}}>+ Agregar producto</button>
+      </div>
     </div>
 
     {error&&<div style={{color:O,fontSize:12,marginBottom:12,padding:10,background:O+"15",borderRadius:8}}>{error}</div>}
@@ -892,7 +1009,8 @@ function Productos({perfil}){
           {faltan.map(s=>(
             <button key={s.medida} onClick={()=>setForm({cliente:"",ancho:s.ancho,largo:s.largo,
                 bolsasPorRollo:s.bolsasPorRollo,rollosPorBulto:s.rollosPorBulto,micras:"",
-                material:"PEBD",color:"NEGRO",pesoBolsa:"",notas:"",activo:true})}
+                material:"PEBD",color:"NEGRO",pesoBolsa:"",paqCama:"",camas:"",paqPalet:"",
+                etiqueta:"",armado:"",notas:"",activo:true})}
               style={{...Btn("transparent",W,{fontSize:11,padding:"6px 11px"})}}>
               + {s.medida} <span style={{color:GR}}>· {s.veces} {s.veces===1?"vez":"veces"}</span>
             </button>
@@ -914,7 +1032,10 @@ function Productos({perfil}){
           <div key={cliente} style={{background:CA,border:"1px solid "+BR,borderRadius:14,padding:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8,flexWrap:"wrap"}}>
               <span style={{color:O,fontWeight:700,fontSize:13,letterSpacing:1}}>{cliente}</span>
-              <button onClick={()=>nuevo(cliente)} style={{...Btn("transparent",O,{fontSize:11,padding:"5px 11px",borderColor:O})}}>+ Medida</button>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>ficha(cliente)} title="Ficha de este cliente" style={{...Btn("transparent",GR,{fontSize:11,padding:"5px 10px"})}}>🖨️</button>
+                <button onClick={()=>nuevo(cliente)} style={{...Btn("transparent",O,{fontSize:11,padding:"5px 11px",borderColor:O})}}>+ Medida</button>
+              </div>
             </div>
             <div style={{display:"flex",flexDirection:"column"}}>
               {ps.map((p,i)=>(
@@ -931,6 +1052,11 @@ function Productos({perfil}){
                     {p.micras?" · "+p.micras+" micrones "+(p.material||""):""}
                   </span>
                   {p.peso_bolsa_g?<span style={{color:GN,fontWeight:700,whiteSpace:"nowrap"}}>{p.peso_bolsa_g} g c/u · {p.peso_bolsa_g} kg/millar</span>:null}
+                  <span style={{color:p.paquetes_por_palet?BL:GR,fontSize:11,whiteSpace:"nowrap"}}>
+                    {p.paquetes_por_palet
+                      ? "🟫 "+p.paquetes_por_palet+" paq./palet"+(p.paquetes_por_cama&&p.camas_por_palet?" ("+p.paquetes_por_cama+"×"+p.camas_por_palet+")":"")
+                      : "🟫 falta el palet"}
+                  </span>
                   <button onClick={()=>editar(p)} style={{...Btn("transparent",GR,{fontSize:11,padding:"4px 9px"})}}>✏️</button>
                   <button onClick={()=>borrar(p)} style={{...Btn("transparent",RE,{fontSize:11,padding:"4px 9px",borderColor:RE+"55"})}}>✕</button>
                 </div>
