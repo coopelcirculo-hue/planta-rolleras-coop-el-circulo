@@ -200,6 +200,19 @@ const db = {
     return !error ? {ok:true} : {ok:false, detalle:error.message};
   },
 
+  // Todos los tramos de estado que tocan un período, con el código de máquina.
+  // Sirve para el panel de paradas: cuánto estuvo cada máquina produciendo,
+  // parada o apagada, y por qué motivo.
+  async estadosRango(desde, hasta) {
+    const {data,error} = await SB.from("estados_maquina")
+      .select("*, maquinas!inner(codigo)")
+      .lte("inicio", hasta+"T23:59:59")
+      .or("fin.is.null,fin.gte."+desde)
+      .order("inicio",{ascending:false}).limit(5000);
+    if(error) return [];
+    return (data||[]).map(e=>({...fromEstado(e), maquina:e.maquinas?.codigo||"S/D"}));
+  },
+
   // Historial de tramos de una máquina (lo último primero)
   async historialEstados(maquinaId) {
     const {data} = await SB.from("estados_maquina").select("*")

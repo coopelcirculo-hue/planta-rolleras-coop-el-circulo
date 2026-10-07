@@ -249,7 +249,7 @@ function CambiarEstadoForm({init,onSave,onClose}){
   </>);
 }
 
-function TarjetaMaquina({fila,onCambiar,onHistorial,onBorrar}){
+function TarjetaMaquina({fila,onCambiar,onSeguir,onHistorial,onBorrar}){
   const info=estadoInfo(fila.estado);
   const color=info?info.color:BR;
   const sinRegistro=!fila.estado;
@@ -279,6 +279,15 @@ function TarjetaMaquina({fila,onCambiar,onHistorial,onBorrar}){
       <div>{desdeHace(fila.inicio)} · <span style={{color:W}}>{duracion(fila.inicio)}</span></div>
       <div style={{marginTop:2}}>desde {fhora(fila.inicio)}{fila.creadoPor?" · "+fila.creadoPor:""}</div>
     </div>}
+
+    {/* Parar y volver a arrancar en un toque: si cuesta registrarlo, no se
+        registra, y sin eso no hay panel de paradas que valga. */}
+    {fila.estado==="produciendo"&&
+      <button onClick={()=>onCambiar({...fila,estado:"parada",motivo:""})}
+        style={{...Btn("transparent",O,{fontSize:12,padding:"9px",borderColor:O})}}>⏸ Parar la máquina</button>}
+    {fila.estado==="parada"&&
+      <button onClick={()=>onSeguir(fila)}
+        style={{...Btn(GN,D,{fontSize:12,padding:"9px"})}}>▶ Volver a producir</button>}
 
     <div style={{display:"flex",gap:8,marginTop:"auto"}}>
       <button onClick={()=>onCambiar(fila)} style={{...Btn(O,D,{flex:1,fontSize:12,padding:"9px"})}}>Cambiar estado</button>
@@ -681,6 +690,16 @@ function Monitoreo({perfil}){
     presentacion:f.presentacion||"", motivo:f.motivo||""
   });
 
+  // Volver a producir lo mismo que estaba haciendo antes de la parada.
+  const volverAProducir = async f => {
+    const previo = (await db.historialEstados(f.maquina_id)).find(h=>h.estado==="produciendo");
+    const r = await db.cambiarEstado({maquinaId:f.maquina_id, estado:"produciendo",
+      medida:previo?.medida||f.medida||"", presentacion:previo?.presentacion||"",
+      creadoPor:perfil?.nombre||""});
+    if(!r.ok){ setError(r.detalle); return; }
+    setError(""); await cargar();
+  };
+
   const guardar = async f => {
     const r = await db.cambiarEstado({...f, creadoPor:perfil?.nombre||""});
     if(!r.ok){ setError(r.detalle); return; }
@@ -732,7 +751,7 @@ function Monitoreo({perfil}){
       </div>
     ):(
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:12}}>
-        {filas.map(f=><TarjetaMaquina key={f.maquina_id} fila={f} onCambiar={abrirCambio} onHistorial={verHistorial} onBorrar={borrarMaquina}/>)}
+        {filas.map(f=><TarjetaMaquina key={f.maquina_id} fila={f} onCambiar={abrirCambio} onSeguir={volverAProducir} onHistorial={verHistorial} onBorrar={borrarMaquina}/>)}
       </div>
     )}
 
@@ -1410,10 +1429,11 @@ function Reportes({perfil}){
   };
 
   // Se vuelve a consultar al cambiar el período y después de cada corrección.
+  const [estados,setEstados]=useState([]);
   const recargar=async()=>{
     setCargando(true);
-    const [d,r]=await Promise.all([db.loadProduccion(desde,hasta),dbRollos.listar(desde,hasta)]);
-    setTodasBobinas(d.bobinas); setTodasProd(d.producciones); setRollos(r); setCargando(false);
+    const [d,r,e]=await Promise.all([db.loadProduccion(desde,hasta),dbRollos.listar(desde,hasta),db.estadosRango(desde,hasta)]);
+    setTodasBobinas(d.bobinas); setTodasProd(d.producciones); setRollos(r); setEstados(e); setCargando(false);
   };
   useEffect(()=>{ recargar(); },[desde,hasta]);
 
@@ -1541,6 +1561,41 @@ function Reportes({perfil}){
   };
   const maqs=porMaquina();
   const maxKilos=maqs[0]?.kilos||1;
+
+  // ── En qué se va el tiempo de máquina ──
+  // Cada tramo (produciendo / parada / apagada) se recorta al período del
+  // reporte, así una parada que arrancó antes no suma horas de más.
+  const tiempos=()=>{
+    const ini=new Date(desde+"T00:00:00").getTime();
+    const fin=Math.min(Date.now(), new Date(hasta+"T23:59:59").getTime());
+    const porEstado={produciendo:0,parada:0,apagada:0};
+    const porMotivo={}, porMaquina={};
+    for(const e of estados){
+      if(rollera!=="todas" && e.maquina!==rollera) continue;
+      const a=Math.max(ini, new Date(e.inicio).getTime());
+      const b=Math.min(fin, e.fin?new Date(e.fin).getTime():Date.now());
+      const min=(b-a)/60000;
+      if(!(min>0)) continue;
+      porEstado[e.estado]=(porEstado[e.estado]||0)+min;
+      porMaquina[e.maquina]=porMaquina[e.maquina]||{maquina:e.maquina,produciendo:0,parada:0,apagada:0};
+      porMaquina[e.maquina][e.estado]+=min;
+      if(e.estado==="parada"){
+        const m=(e.motivo||"Sin motivo").trim()||"Sin motivo";
+        porMotivo[m]=porMotivo[m]||{motivo:m,min:0,veces:0};
+        porMotivo[m].min+=min; porMotivo[m].veces++;
+      }
+    }
+    const total=porEstado.produciendo+porEstado.parada+porEstado.apagada;
+    const motivos=Object.values(porMotivo).sort((a,b)=>b.min-a.min);
+    const maquinas=Object.values(porMaquina).map(m=>{
+      const t=m.produciendo+m.parada;   // apagada = fuera de turno, no cuenta
+      return {...m, disp:t?100*m.produciendo/t:0};
+    }).sort((a,b)=>b.produciendo-a.produciendo);
+    return {total,porEstado,motivos,maquinas,
+            minParada:porEstado.parada, maxMotivo:motivos[0]?motivos[0].min:1};
+  };
+  const tiempo=tiempos();
+  const horas=min=>min>=60?(min/60).toFixed(1)+" h":Math.round(min)+" min";
 
   // ── Kilos por millar de bolsas y control de calibre ──
   // Cuánto material lleva cada mil bolsas. Se compara con el peso teórico del
@@ -1863,6 +1918,63 @@ ${html||"<p style='color:#F8FAFC'>No se pudo abrir este reporte.</p>"}</div></di
               </div>
             </div>
           ))}
+        </Caja>
+
+        <Caja titulo="⏱️ En qué se va el tiempo de máquina">
+          {tiempo.total<=0?
+            <p style={{color:GR,fontSize:12,lineHeight:1.5}}>
+              Todavía no hay tiempos registrados en este período. Se arman solos con el
+              botón <span style={{color:O}}>⏸ Parar la máquina</span> de Monitoreo: cada vez
+              que se para y se vuelve a arrancar queda el motivo y cuánto duró.
+            </p>:(<>
+            <div style={{display:"flex",gap:14,flexWrap:"wrap",marginBottom:12}}>
+              {[["Produciendo",tiempo.porEstado.produciendo,GN],
+                ["Parada",tiempo.porEstado.parada,O],
+                ["Apagada",tiempo.porEstado.apagada,GR]].map(([l,v,c])=>(
+                <div key={l}>
+                  <div style={{color:GR,fontSize:9,letterSpacing:1}}>{l.toUpperCase()}</div>
+                  <div style={{color:c,fontWeight:700,fontSize:15}}>{horas(v)}</div>
+                  <div style={{color:GR,fontSize:10}}>{tiempo.total?(100*v/tiempo.total).toFixed(0):0}% del tiempo</div>
+                </div>
+              ))}
+            </div>
+
+            {tiempo.motivos.length>0&&<>
+              <div style={{color:GR,fontSize:11,marginBottom:8}}>POR QUÉ SE PARÓ</div>
+              {tiempo.motivos.map((m,i)=>(
+                <div key={i} className="fila-reporte" style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8}}>
+                    <span style={{color:W}}>{m.motivo}</span>
+                    <span style={{color:O,fontWeight:700,whiteSpace:"nowrap"}}>{horas(m.min)} · {m.veces} {m.veces===1?"vez":"veces"}</span>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <Barra valor={m.min} max={tiempo.maxMotivo} color={O}/>
+                    <span style={{color:GR,fontSize:10,minWidth:92,textAlign:"right"}}>
+                      {tiempo.minParada?(100*m.min/tiempo.minParada).toFixed(0):0}% · {horas(m.min/m.veces)} c/u
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </>}
+
+            {tiempo.maquinas.length>1&&<>
+              <div style={{color:GR,fontSize:11,margin:"12px 0 8px"}}>CUÁNTO ESTUVO EN MARCHA CADA UNA</div>
+              {tiempo.maquinas.map((m,i)=>(
+                <div key={i} className="fila-reporte" style={{marginBottom:10}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:4,gap:8}}>
+                    <span style={{color:W,fontWeight:600}}>{tituloMaquina(m.maquina)}</span>
+                    <span style={{color:m.disp>=85?GN:(m.disp>=70?O:RE),fontWeight:700}}>{m.disp.toFixed(0)}% en marcha</span>
+                  </div>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <Barra valor={m.disp} max={100} color={m.disp>=85?GN:(m.disp>=70?O:RE)}/>
+                    <span style={{color:GR,fontSize:10,minWidth:120,textAlign:"right"}}>
+                      {horas(m.produciendo)} en marcha · {horas(m.parada)} parada
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </>}
+          </>)}
         </Caja>
 
         <Caja titulo="📐 Kilos por millar y calibre">
